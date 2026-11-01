@@ -6,7 +6,17 @@ running [GoldHEN](https://github.com/GoldHEN/GoldHEN), built with the
 
 This is an unofficial third-party client. It is not affiliated with the Jellyfin project or Sony.
 
-![Screenshot](docs/screenshot.png) <!-- placeholder: add a screenshot here -->
+![Movie detail](docs/screenshot.png)
+
+| Sign in | Settings |
+|---|---|
+| ![Sign in](docs/signin.png) | ![Settings](docs/settings.png) |
+
+| Home / navigation | Connect |
+|---|---|
+| ![Home](docs/home.png) | ![Connect](docs/connect.png) |
+
+<sub>Screenshots are from a running console; server address and user name are placeholders.</sub>
 
 ## Features
 
