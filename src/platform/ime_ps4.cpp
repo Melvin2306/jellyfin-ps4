@@ -102,9 +102,11 @@ bool open(const std::string &title, const std::string &initial, Kind kind, int m
 	OrbisImeDialogSetting param;
 	memset(&param, 0, sizeof(param));
 	param.userId = (uint32_t)user;
-	param.type = kind == URL ? ORBIS_TYPE_TYPE_URL : ORBIS_TYPE_DEFAULT;
+	// Password mode: basic-latin keyboard, default enter label (the GO label
+	// plus the password option was rejected on 13.xx with 0x80BC0030).
+	param.type = kind == URL ? ORBIS_TYPE_TYPE_URL : kind == PASSWORD ? ORBIS_TYPE_BASIC_LATIN : ORBIS_TYPE_DEFAULT;
 	param.supportedLanguages = 0;
-	param.enterLabel = kind == PASSWORD ? ORBIS_BUTTON_LABEL_GO : ORBIS_BUTTON_LABEL_DEFAULT;
+	param.enterLabel = ORBIS_BUTTON_LABEL_DEFAULT;
 	param.option = kind == PASSWORD ? OPTION_PASSWORD : 0;
 	param.maxTextLength = (uint32_t)max_length;
 	param.inputTextBuffer = (wchar_t *)g_text;
