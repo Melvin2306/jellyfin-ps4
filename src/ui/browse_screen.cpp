@@ -44,7 +44,7 @@ BrowseScreen::BrowseScreen(Fonts &fonts, Navigator &nav, const std::string &titl
 void BrowseScreen::load() {
 	loading_ = true;
 	std::weak_ptr<int> alive = alive_;
-	jf::client().browse(params_ + "&" + sorting::params(sort_) + "&Limit=1000",
+	jf::client().browse(params_ + "&" + sorting::params(sort_) + filters_.query() + "&Limit=1000",
 			[this, alive](bool ok, const std::string &error, const std::vector<jf::Item> &items) {
 				if (alive.expired()) return;
 				loading_ = false;
@@ -62,10 +62,21 @@ void BrowseScreen::update(double dt, uint32_t pressed) {
 		nav_.pop();
 		return;
 	}
+	if (filter_panel_.visible()) {
+		if (filter_panel_.update(dt, pressed)) {
+			filters_ = filter_panel_.filters();
+			load();
+		}
+		return;
+	}
 	if (pressed & platform::BUTTON_SQUARE) {
 		sort_ = (sort_ + 1) % sorting::COUNT;
 		grid_.set_letter_jump(sort_ == 0);
 		load();
+	}
+	if (pressed & platform::BUTTON_TRIANGLE) {
+		filter_panel_.open(filters_);
+		return;
 	}
 	if (grid_.update(dt, pressed) == PosterGrid::OPEN && grid_.current()) {
 		const std::vector<jf::Item> &items = grid_.items();
@@ -86,13 +97,15 @@ void BrowseScreen::draw(Renderer &r) {
 	grid_.draw(r, fonts_, 120, 160, 130, 1000);
 	r.rect(0, 0, 1920, 125, theme::BASE_100);
 	r.text(fonts_.section, title_, 120, 95, theme::BASE_CONTENT);
-	const std::string sort = std::string("Sort: ") + sorting::label(sort_);
+	std::string sort = std::string("Sort: ") + sorting::label(sort_);
+	if (filters_.active()) sort += "   Filters: " + filters_.summary();
 	r.text(fonts_.small, sort, 1800 - fonts_.small.measure(sort), 95, theme::BASE_CONTENT_MUTED);
 	if (grid_.items().empty()) {
 		const std::string msg = loading_ ? "Loading\xE2\x80\xA6" : !error_.empty() ? "Couldn't load: " + error_ : "Nothing here.";
 		r.text(fonts_.body, msg, 120, 220, error_.empty() ? theme::BASE_CONTENT_MUTED : theme::ERROR);
 	}
 	r.rect(0, 1005, 1920, 75, theme::BASE_100);
-	ui::hints(r, fonts_.small, { { "\xC3\x97", "Open" }, { "\xE2\x96\xA1", "Sort" }, { "L2 R2", sort_ == 0 ? "A\xE2\x80\x93Z" : "Page" },
-			{ "\xE2\x97\x8B", "Back" } }, 120, 1050);
+	ui::hints(r, fonts_.small, { { "\xC3\x97", "Open" }, { "\xE2\x96\xA1", "Sort" }, { "\xE2\x96\xB3", "Filter" },
+			{ "L2 R2", sort_ == 0 ? "A\xE2\x80\x93Z" : "Page" }, { "\xE2\x97\x8B", "Back" } }, 120, 1050);
+	filter_panel_.draw(r, fonts_);
 }

@@ -176,6 +176,14 @@ public:
 	std::string trickplay_tile_url(const Item &item, int tile_index) const;
 	std::string person_image_url(const Person &person, int height) const;
 	void favorites(ItemsCallback done);
+	// Watchlist / play queue: stored locally per user (ids in settings.json).
+	void watchlist_items(ItemsCallback done);
+	std::vector<std::string> watchlist() const;
+	bool in_watchlist(const std::string &id) const;
+	void watchlist_add(const std::string &id);
+	void watchlist_remove(const std::string &id);
+	// Several items by id, preserving the given order.
+	void items_by_ids(const std::vector<std::string> &ids, ItemsCallback done);
 	void set_favorite(const std::string &id, bool favorite, DoneCallback done);
 	void set_played(const std::string &id, bool played, DoneCallback done);
 	// The episode after `episode` in its series (items empty if it's the last).

@@ -6,6 +6,7 @@
 
 #include "../core/jellyfin.h"
 #include "components.h"
+#include "filter_panel.h"
 #include "poster_grid.h"
 #include "screen.h"
 
@@ -20,7 +21,7 @@ public:
 	void draw(Renderer &r) override;
 
 private:
-	enum Section { SEARCH, RESUME, NEXT_UP, FAVORITES, MOVIES, SHOWS, COLLECTIONS, GENRES, SETTINGS, SWITCH_USER, SIGN_OUT, SECTIONS };
+	enum Section { SEARCH, RESUME, NEXT_UP, WATCHLIST, FAVORITES, MOVIES, SHOWS, COLLECTIONS, GENRES, SETTINGS, SWITCH_USER, SIGN_OUT, SECTIONS };
 	static bool is_list(int s) { return s >= RESUME && s <= GENRES; }
 	static bool sortable(int s) { return s == MOVIES || s == SHOWS; }
 	void load(int section);
@@ -33,6 +34,9 @@ private:
 	bool loaded_[SECTIONS] = {}, loading_[SECTIONS] = {};
 	std::string error_[SECTIONS];
 	int sort_[SECTIONS] = {};
+	Filters filters_[SECTIONS];
+	FilterPanel filter_panel_;
+	int filter_section_ = -1;
 	float side_focus_[SECTIONS] = {};
 	int seen_library_rev_ = 0;
 	std::shared_ptr<int> alive_ = std::make_shared<int>(0);

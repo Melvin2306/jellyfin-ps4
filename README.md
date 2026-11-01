@@ -24,6 +24,8 @@ This is an unofficial third-party client. It is not affiliated with the Jellyfin
   - Search with the system keyboard (movies, shows, episodes).
   - Sort Movies / TV Shows / genre and collection lists by name, year, date added or rating (□); jump by letter with L2 / R2.
   - Add / remove favorites and mark watched / unwatched from the details screen.
+  - Watchlist: build your own queue from a title's details; a Watchlist home row plays through it in order.
+  - Filters (△) on Movies, TV Shows, genres and collections: year range, minimum community rating, unwatched only.
 - **Playback**:
   - Direct play of the original file. Video is decoded on the console by FFmpeg (H.264, HEVC incl. 10-bit, MPEG-4, VP9, AV1; MP4/MKV/TS; AAC, AC3, E-AC3, MP3, FLAC, Opus…), so the server doesn't need to transcode.
   - Optional server transcode (H.264/AAC), used automatically if direct play fails.

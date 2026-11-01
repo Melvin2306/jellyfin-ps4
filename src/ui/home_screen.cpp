@@ -2,6 +2,7 @@
 
 #include "../platform/platform.h"
 #include "browse_screen.h"
+#include "detail_screen.h"
 #include "search_screen.h"
 #include "settings_screen.h"
 #include "theme.h"
@@ -9,8 +10,8 @@
 #include <algorithm>
 
 namespace {
-const char *NAMES[] = { "Search", "Continue Watching", "Next Up", "Favorites", "Movies", "TV Shows", "Collections", "Genres",
-	"Settings", "Switch user", "Sign out" };
+const char *NAMES[] = { "Search", "Continue Watching", "Next Up", "Watchlist", "Favorites", "Movies", "TV Shows", "Collections",
+	"Genres", "Settings", "Switch user", "Sign out" };
 const float SIDE_X = 70, SIDE_W = 330, SIDE_TOP = 190, SIDE_ROW = 70;
 const float GRID_X = 470, GRID_TOP = 150, VIEW_TOP = 130, VIEW_BOTTOM = 1000;
 } // namespace
@@ -39,9 +40,10 @@ void HomeScreen::load(int section) {
 	switch (section) {
 		case RESUME: c.resume(done); break;
 		case NEXT_UP: c.next_up(done); break;
+		case WATCHLIST: c.watchlist_items(done); break;
 		case FAVORITES: c.favorites(done); break;
-		case MOVIES: c.browse("IncludeItemTypes=Movie&Recursive=true&Limit=1000&" + sort, done); break;
-		case SHOWS: c.browse("IncludeItemTypes=Series&Recursive=true&Limit=500&" + sort, done); break;
+		case MOVIES: c.browse("IncludeItemTypes=Movie&Recursive=true&Limit=1000&" + sort + filters_[MOVIES].query(), done); break;
+		case SHOWS: c.browse("IncludeItemTypes=Series&Recursive=true&Limit=500&" + sort + filters_[SHOWS].query(), done); break;
 		case COLLECTIONS: c.collections(done); break;
 		case GENRES: c.genres(done); break;
 	}
@@ -56,6 +58,13 @@ void HomeScreen::update(double dt, uint32_t pressed) {
 	}
 	for (int i = 0; i < SECTIONS; i++) {
 		side_focus_[i] = ui::approach(side_focus_[i], (!in_grid_ && i == section_) ? 1.0f : 0.0f, dt);
+	}
+	if (filter_panel_.visible()) {
+		if (filter_panel_.update(dt, pressed) && filter_section_ >= 0) {
+			filters_[filter_section_] = filter_panel_.filters();
+			load(filter_section_);
+		}
+		return;
 	}
 	PosterGrid &grid = grids_[section_];
 	grid.set_focused(in_grid_);
@@ -92,13 +101,29 @@ void HomeScreen::update(double dt, uint32_t pressed) {
 		}
 		const PosterGrid::Action a = grid.update(dt, pressed);
 		if (a == PosterGrid::LEAVE_LEFT) in_grid_ = false;
-		if (a == PosterGrid::OPEN && grid.current()) open_item(fonts_, nav_, *grid.current());
+		if (a == PosterGrid::OPEN && grid.current()) {
+			if (section_ == WATCHLIST) {
+				const std::vector<jf::Item> &items = grid.items();
+				const int sel = grid.selected();
+				const jf::Item *next = (sel + 1 < (int)items.size()) ? &items[sel + 1] : nullptr;
+				nav_.push(std::unique_ptr<Screen>(new DetailScreen(fonts_, nav_, *grid.current(), next)));
+			} else {
+				open_item(fonts_, nav_, *grid.current());
+			}
+		}
 	}
 	if (pressed & platform::BUTTON_OPTIONS) {
 		nav_.push(std::unique_ptr<Screen>(new SettingsScreen(fonts_, nav_)));
 		return;
 	}
-	if (pressed & platform::BUTTON_TRIANGLE) load(section_);
+	if (pressed & platform::BUTTON_TRIANGLE) {
+		if (section_ == MOVIES || section_ == SHOWS) {
+			filter_section_ = section_;
+			filter_panel_.open(filters_[section_]);
+		} else {
+			load(section_);
+		}
+	}
 	if ((pressed & platform::BUTTON_SQUARE) && sortable(section_)) {
 		sort_[section_] = (sort_[section_] + 1) % sorting::COUNT;
 		grids_[section_].set_letter_jump(sort_[section_] == 0);
@@ -115,7 +140,10 @@ void HomeScreen::draw(Renderer &r) {
 	r.text(fonts_.section, NAMES[section_], GRID_X, 100, theme::BASE_CONTENT);
 	if (list) {
 		std::string right;
-		if (sortable(section_)) right = std::string("Sort: ") + sorting::label(sort_[section_]);
+		if (sortable(section_)) {
+			right = std::string("Sort: ") + sorting::label(sort_[section_]);
+			if (filters_[section_].active()) right += "  Filter: " + filters_[section_].summary();
+		}
 		if (in_grid_ && !grids_[section_].items().empty()) {
 			right += (right.empty() ? "" : "   ") + std::to_string(grids_[section_].selected() + 1) + " / " +
 					std::to_string(grids_[section_].items().size());
@@ -124,7 +152,8 @@ void HomeScreen::draw(Renderer &r) {
 	}
 	if (list && grids_[section_].items().empty()) {
 		static const char *empty[] = { "", "Nothing to continue yet.", "No next episodes. Start a series to see it here.",
-			"No favorites yet. Add some from a title's details.", "No movies.", "No shows.", "No collections.", "No genres." };
+			"Your Watchlist is empty. Add titles from their details.", "No favorites yet. Add some from a title's details.",
+			"No movies.", "No shows.", "No collections.", "No genres." };
 		const std::string msg = loading_[section_] ? "Loading\xE2\x80\xA6"
 				: !error_[section_].empty() ? "Couldn't load: " + error_[section_] + " (\xC3\x97 to retry)"
 				: empty[section_];
@@ -155,8 +184,14 @@ void HomeScreen::draw(Renderer &r) {
 		ui::end_focus(r, SIDE_X - 16, y, SIDE_W, h, theme::radius_field(), 1.0f, theme::BASE_200);
 	}
 	r.rect(GRID_X - 40, 1005, 1920, 75, theme::BASE_100);
-	std::vector<ui::Hint> hints = { { "\xC3\x97", "Select" }, { "\xE2\x97\x8B", "Back" }, { "\xE2\x96\xB3", "Refresh" } };
-	if (sortable(section_)) hints.push_back({ "\xE2\x96\xA1", "Sort" });
+	std::vector<ui::Hint> hints = { { "\xC3\x97", "Select" }, { "\xE2\x97\x8B", "Back" } };
+	if (sortable(section_)) {
+		hints.push_back({ "\xE2\x96\xA1", "Sort" });
+		hints.push_back({ "\xE2\x96\xB3", "Filter" });
+	} else {
+		hints.push_back({ "\xE2\x96\xB3", "Refresh" });
+	}
 	if (list && in_grid_) hints.push_back({ "L2 R2", sort_[section_] == 0 ? "A\xE2\x80\x93Z" : "Page" });
 	ui::hints(r, fonts_.small, hints, GRID_X, 1050);
+	filter_panel_.draw(r, fonts_);
 }

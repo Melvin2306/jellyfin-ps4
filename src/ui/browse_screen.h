@@ -4,6 +4,7 @@
 #pragma once
 
 #include "../core/jellyfin.h"
+#include "filter_panel.h"
 #include "poster_grid.h"
 #include "screen.h"
 
@@ -32,6 +33,8 @@ private:
 	Navigator &nav_;
 	std::string title_, params_;
 	int sort_ = 0;
+	Filters filters_;
+	FilterPanel filter_panel_;
 	PosterGrid grid_;
 	bool loading_ = false;
 	std::string error_;

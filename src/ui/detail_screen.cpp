@@ -126,6 +126,10 @@ void DetailScreen::build_buttons() {
 		Button w{ item_.played ? "Mark unwatched" : "Mark watched", false, 0 };
 		w.menu = 3;
 		b.push_back(w);
+		const bool inwl = jf::client().in_watchlist(item_.id);
+		Button wl{ inwl ? "Remove from Watchlist" : "Add to Watchlist", false, 0 };
+		wl.menu = 4;
+		b.push_back(wl);
 	}
 	const bool same = b.size() == buttons_.size();
 	buttons_ = b;
@@ -198,6 +202,10 @@ void DetailScreen::update(double dt, uint32_t pressed) {
 			const Button &b = buttons_[button_];
 			if (b.menu == 2 || b.menu == 3) {
 				toggle(b.menu == 2);
+			} else if (b.menu == 4) {
+				if (jf::client().in_watchlist(item_.id)) jf::client().watchlist_remove(item_.id);
+				else jf::client().watchlist_add(item_.id);
+				build_buttons();
 			} else if (b.menu >= 0) {
 				menu_.open(item_, false, audio_, subtitle_, b.menu);
 			} else {

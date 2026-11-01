@@ -645,6 +645,75 @@ void Client::favorites(ItemsCallback done) {
 	browse("Filters=IsFavorite&IncludeItemTypes=Movie,Series,Episode&Recursive=true&SortBy=SortName&Limit=500", done);
 }
 
+std::vector<std::string> Client::watchlist() const {
+	std::vector<std::string> ids;
+	std::string s = settings::user_string(user_id_, "watchlist");
+	size_t i = 0;
+	while (i < s.size()) {
+		size_t c = s.find(',', i);
+		if (c == std::string::npos) c = s.size();
+		std::string id = s.substr(i, c - i);
+		if (!id.empty()) ids.push_back(id);
+		i = c + 1;
+	}
+	return ids;
+}
+
+bool Client::in_watchlist(const std::string &id) const {
+	for (const std::string &e : watchlist())
+		if (e == id) return true;
+	return false;
+}
+
+static std::string join_ids(const std::vector<std::string> &ids) {
+	std::string s;
+	for (size_t i = 0; i < ids.size(); i++) s += (i ? "," : "") + ids[i];
+	return s;
+}
+
+void Client::watchlist_add(const std::string &id) {
+	std::vector<std::string> ids = watchlist();
+	for (const std::string &e : ids)
+		if (e == id) return;
+	ids.push_back(id);
+	settings::set_user(user_id_, "watchlist", join_ids(ids));
+	library_rev++;
+	platform::log("jellyfin: watchlist + (%d items)", (int)ids.size());
+}
+
+void Client::watchlist_remove(const std::string &id) {
+	std::vector<std::string> ids = watchlist(), out;
+	for (const std::string &e : ids)
+		if (e != id) out.push_back(e);
+	settings::set_user(user_id_, "watchlist", join_ids(out));
+	library_rev++;
+	platform::log("jellyfin: watchlist - (%d items)", (int)out.size());
+}
+
+void Client::items_by_ids(const std::vector<std::string> &ids, ItemsCallback done) {
+	if (ids.empty()) {
+		done(true, "", {});
+		return;
+	}
+	const std::vector<std::string> order = ids;
+	get_items("/Items?userId=" + user_id_ + "&ids=" + join_ids(ids) + "&" + LIST_FIELDS,
+			[order, done](bool ok, const std::string &error, const std::vector<Item> &items) {
+				// Preserve the watchlist order (the server returns its own order).
+				std::vector<Item> sorted;
+				for (const std::string &id : order)
+					for (const Item &it : items)
+						if (it.id == id) {
+							sorted.push_back(it);
+							break;
+						}
+				done(ok, error, ok ? sorted : items);
+			});
+}
+
+void Client::watchlist_items(ItemsCallback done) {
+	items_by_ids(watchlist(), done);
+}
+
 static void user_data_call(Client &c, const std::string &url, bool add, DoneCallback done, int &library_rev,
 		std::vector<std::string> headers) {
 	http::Request req;
