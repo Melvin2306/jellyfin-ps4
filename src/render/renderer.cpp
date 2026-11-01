@@ -277,6 +277,11 @@ void Renderer::image_stretch(const Texture &t, float x, float y, float w, float 
 	quad(IMAGE, t.id, Color{ 1, 1, 1, 1 }, x, y, w, h, 0, 0, shown, 1);
 }
 
+void Renderer::image_region(const Texture &t, float x, float y, float w, float h, float u0, float v0, float u1, float v1) {
+	if (!t.valid() || w <= 0 || h <= 0) return;
+	quad(IMAGE, t.id, Color{ 1, 1, 1, 1 }, x, y, w, h, u0, v0, u1, v1);
+}
+
 // A 1x256 texture: rgb = the fade colour, alpha = 0..1 top to bottom.
 // Drawn with fpAlphaTexture (proven on PS4 by every image), not fpAlphaColor.
 const Texture &Renderer::ramp(const Color &c) {

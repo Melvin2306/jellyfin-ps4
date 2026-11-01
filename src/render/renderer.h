@@ -54,6 +54,8 @@ public:
 	void image_cover(const Texture &t, float x, float y, float w, float h, float alpha = 1.0f);
 	// The whole image stretched to the box (the video, in its aspect ratio modes).
 	void image_stretch(const Texture &t, float x, float y, float w, float h);
+	// A sub-rectangle of a texture (uv in 0..1) into the box (trickplay tiles).
+	void image_region(const Texture &t, float x, float y, float w, float h, float u0, float v0, float u1, float v1);
 	// Rounds an image's corners by drawing `background`-coloured caps over
 	// them (works on solid backgrounds, which is all the UI uses).
 	void round_corners(float x, float y, float w, float h, float radius, const Color &background);

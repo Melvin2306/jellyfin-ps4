@@ -62,4 +62,18 @@ public:
 	// What the input is doing while the player waits (torrent peers and
 	// speed); empty when there's nothing to add to "Buffering…".
 	virtual std::string source_status() const { return std::string(); }
+
+	// Playback speed (1.0 = normal). Changing pitch is not corrected: the
+	// pitch rises above 1.0x and falls below it.
+	virtual void set_rate(double) {}
+	virtual double rate() const { return 1.0; }
+
+	// Decoder diagnostics for the player's overlay.
+	struct Stats {
+		std::string video_codec, audio_codec;
+		int width = 0, height = 0, audio_channels = 0, out_channels = 0;
+		int dropped = 0;
+		double decode_ms = 0;
+	};
+	virtual Stats stats() const { return {}; }
 };

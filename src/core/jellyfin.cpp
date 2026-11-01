@@ -124,6 +124,44 @@ Item Item::from_json(const Json &j) {
 		}
 	}
 	if (it.media_source_id.empty()) it.media_source_id = it.id;
+	const Json &chapters = j["Chapters"];
+	for (size_t i = 0; i < chapters.size(); i++) {
+		Chapter c;
+		c.name = chapters[i]["Name"].as_string("");
+		c.start = chapters[i]["StartPositionTicks"].as_int(0) / 1e7;
+		it.chapters.push_back(c);
+	}
+	const Json &people = j["People"];
+	for (size_t i = 0; i < people.size(); i++) {
+		Person p;
+		p.id = people[i]["Id"].as_string("");
+		p.name = people[i]["Name"].as_string("");
+		p.role = people[i]["Role"].as_string("");
+		p.type = people[i]["Type"].as_string("");
+		p.image_tag = people[i]["PrimaryImageTag"].as_string("");
+		if (!p.id.empty() && !p.name.empty()) it.people.push_back(p);
+	}
+	// Trickplay manifest: { mediaSourceId: { widthString: TrickplayInfoDto } }.
+	// Pick the widest resolution available (best quality the seek bar can show).
+	const Json &tp = j["Trickplay"];
+	if (tp.is_object()) {
+		const Json &byWidth = tp.has(it.media_source_id) ? tp[it.media_source_id] : Json();
+		const Json &use = byWidth.is_object() ? byWidth : (tp.items().empty() ? Json() : tp.items().begin()->second);
+		if (use.is_object()) {
+			for (const auto &kv : use.items()) {
+				const Json &info = kv.second;
+				const int w = (int)info["Width"].as_int(0);
+				if (w > it.trickplay.width) {
+					it.trickplay.width = w;
+					it.trickplay.height = (int)info["Height"].as_int(0);
+					it.trickplay.tile_w = (int)info["TileWidth"].as_int(0);
+					it.trickplay.tile_h = (int)info["TileHeight"].as_int(0);
+					it.trickplay.count = (int)info["ThumbnailCount"].as_int(0);
+					it.trickplay.interval_ms = (int)info["Interval"].as_int(0);
+				}
+			}
+		}
+	}
 	return it;
 }
 
@@ -576,6 +614,11 @@ void Client::search(const std::string &term, ItemsCallback done) {
 	browse("searchTerm=" + url_encode(term) + "&IncludeItemTypes=Movie,Series,Episode&Recursive=true&Limit=100", done);
 }
 
+std::string Client::trickplay_tile_url(const Item &item, int tile_index) const {
+	return url("/Videos/" + item.id + "/Trickplay/" + std::to_string(item.trickplay.width) + "/" +
+			std::to_string(tile_index) + ".jpg?mediaSourceId=" + url_encode(item.media_source_id));
+}
+
 void Client::genres(ItemsCallback done) {
 	get_items("/Genres?userId=" + user_id_ + "&IncludeItemTypes=Movie,Series&SortBy=SortName&EnableImageTypes=Primary&ImageTypeLimit=1", done);
 }
@@ -659,7 +702,8 @@ void Client::episodes(const std::string &series_id, ItemsCallback done) {
 }
 
 void Client::item(const std::string &id, ItemsCallback done) {
-	get_items("/Items/" + id + "?userId=" + user_id_, done);
+	get_items("/Items/" + id + "?userId=" + user_id_ +
+			"&Fields=Overview,MediaSources,ProductionYear,People,Chapters,Trickplay,Genres", done);
 }
 
 std::string Client::image_url(const Item &item, int height) const {

@@ -45,6 +45,15 @@ private:
 	void begin_countdown();
 	void play_next();
 	void draw_countdown(Renderer &r);
+	// Chapters
+	int chapter_at(double pos) const;
+	void jump_chapter(int delta);
+	// Playback speed
+	void change_speed(int delta);
+	// Trickplay (scrub thumbnails)
+	void draw_trickplay(Renderer &r, double target, float bar_x, float bar_w, float bar_y);
+	// Diagnostics overlay
+	void draw_diagnostics(Renderer &r);
 
 	Fonts &fonts_;
 	Navigator &nav_;
@@ -79,4 +88,15 @@ private:
 	bool has_next_ = false;
 	double countdown_ = -1; // seconds left before the next episode (< 0: none)
 	float skip_focus_ = 0;
+	// Up Next item (episode, or next movie in a collection); has_next_ gates it.
+	// Playback speed
+	int speed_index_ = 2;   // index into SPEEDS (2 = 1.0x)
+	float speed_hint_ = 0;  // shows the speed briefly after a change
+	// Chapters
+	float chapter_hint_ = 0;
+	std::string chapter_label_;
+	// Diagnostics overlay
+	bool show_diag_ = false;
+	// Trickplay tile currently loading (so the image cache keeps it warm)
+	int trickplay_tile_ = -1;
 };

@@ -28,6 +28,25 @@ struct Stream {
 	int channels = 0;
 };
 
+struct Chapter {
+	std::string name;
+	double start = 0; // seconds
+};
+
+struct Person {
+	std::string id, name, role, type; // type: Actor, Director, Writer...
+	std::string image_tag;
+};
+
+// Trickplay (scrubbing thumbnails) for one resolution of one media source.
+struct Trickplay {
+	int width = 0, height = 0;    // one thumbnail
+	int tile_w = 0, tile_h = 0;   // thumbnails per tile image (columns x rows)
+	int count = 0;                // total thumbnails
+	int interval_ms = 0;          // time between thumbnails
+	bool valid() const { return width > 0 && interval_ms > 0 && tile_w > 0 && tile_h > 0; }
+};
+
 struct Item {
 	std::string id, name, type; // type: Movie, Series, Episode, Season...
 	std::string overview, series_name, series_id, container;
@@ -43,6 +62,9 @@ struct Item {
 	int width = 0, height = 0, audio_channels = 0;
 	int64_t bitrate = 0;
 	std::vector<Stream> streams; // audio + subtitles of the first media source
+	std::vector<Chapter> chapters;
+	std::vector<Person> people;
+	Trickplay trickplay;         // empty unless the detail fetch requested it
 
 	std::vector<Stream> audio_streams() const;
 	std::vector<Stream> subtitle_streams() const;
@@ -148,6 +170,8 @@ public:
 	void search(const std::string &term, ItemsCallback done);
 	void genres(ItemsCallback done);
 	void collections(ItemsCallback done);
+	// URL of the trickplay tile image holding thumbnail index `tile_index`.
+	std::string trickplay_tile_url(const Item &item, int tile_index) const;
 	void favorites(ItemsCallback done);
 	void set_favorite(const std::string &id, bool favorite, DoneCallback done);
 	void set_played(const std::string &id, bool played, DoneCallback done);

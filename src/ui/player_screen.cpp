@@ -2,16 +2,20 @@
 
 #include "../core/settings.h"
 #include "../core/tracks.h"
+#include "../net/images.h"
 #include "../platform/platform.h"
 #include "theme.h"
 
-#include <algorithm>
 #include <cstdio>
+
+#include <algorithm>
 
 namespace {
 const double REPORT_INTERVAL = 10;
 const double SEEK_DELAY = 0.7;
 const double OVERLAY_SECONDS = 4;
+const double SPEEDS[] = { 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0 };
+const int SPEED_COUNT = (int)(sizeof(SPEEDS) / sizeof(SPEEDS[0]));
 
 std::string clock_text(double seconds) {
 	if (seconds < 0) seconds = 0;
@@ -257,7 +261,12 @@ void PlayerScreen::update(double dt, uint32_t pressed) {
 	const double pos = position();
 	if (state == VideoPlayer::PLAYING || state == VideoPlayer::PAUSED) last_position_ = pos;
 
-	if ((state == VideoPlayer::PLAYING || state == VideoPlayer::PAUSED) && !tracks_applied_) apply_tracks();
+	if ((state == VideoPlayer::PLAYING || state == VideoPlayer::PAUSED) && !tracks_applied_) {
+		apply_tracks();
+		if (speed_index_ != 2 && player_) player_->set_rate(SPEEDS[speed_index_]); // re-apply after a (re)start
+	}
+	speed_hint_ = std::max(0.0f, speed_hint_ - (float)dt);
+	chapter_hint_ = std::max(0.0f, chapter_hint_ - (float)dt);
 
 	if (menu_.visible()) {
 		const TrackMenu::Result res = menu_.update(dt, pressed);
@@ -355,6 +364,13 @@ void PlayerScreen::update(double dt, uint32_t pressed) {
 		else player_->play();
 		jf::client().report_progress(args_.item, plan_, pos, state == VideoPlayer::PLAYING);
 	}
+	if (pressed & platform::BUTTON_SQUARE) show_diag_ = !show_diag_;
+	if (pressed & platform::BUTTON_UP) change_speed(+1);
+	if (pressed & platform::BUTTON_DOWN) change_speed(-1);
+	if (!args_.item.chapters.empty()) {
+		if (pressed & platform::BUTTON_L2) jump_chapter(-1);
+		if (pressed & platform::BUTTON_R2) jump_chapter(+1);
+	}
 	double step = 0;
 	if (pressed & platform::BUTTON_LEFT) step -= 10;
 	if (pressed & platform::BUTTON_RIGHT) step += 10;
@@ -381,6 +397,45 @@ void PlayerScreen::update(double dt, uint32_t pressed) {
 			}
 		}
 	}
+}
+
+int PlayerScreen::chapter_at(double pos) const {
+	int idx = -1;
+	for (int i = 0; i < (int)args_.item.chapters.size(); i++)
+		if (args_.item.chapters[i].start <= pos + 0.5) idx = i;
+	return idx;
+}
+
+void PlayerScreen::jump_chapter(int delta) {
+	const std::vector<jf::Chapter> &ch = args_.item.chapters;
+	if (ch.empty()) return;
+	const double pos = pending_seek_ >= 0 ? pending_seek_ : position();
+	int idx = chapter_at(pos);
+	if (delta < 0) {
+		// Previous: the one before, unless we are well past this chapter's start.
+		if (idx > 0 && pos - ch[idx].start < 3.0) idx--;
+		else if (idx < 0) idx = 0;
+	} else {
+		idx = idx + 1;
+		if (idx >= (int)ch.size()) return; // no next chapter
+	}
+	if (idx < 0) idx = 0;
+	const double target = ch[idx].start;
+	chapter_label_ = (ch[idx].name.empty() ? "Chapter " + std::to_string(idx + 1) : ch[idx].name);
+	chapter_hint_ = 2.0f;
+	pending_seek_ = target;
+	seek_timer_ = 0.25; // chapters jump quickly
+	overlay_timer_ = OVERLAY_SECONDS;
+	platform::log("player: chapter %d '%s' at %.0f s", idx + 1, chapter_label_.c_str(), target);
+}
+
+void PlayerScreen::change_speed(int delta) {
+	const int n = std::max(0, std::min(SPEED_COUNT - 1, speed_index_ + delta));
+	if (n == speed_index_) return;
+	speed_index_ = n;
+	speed_hint_ = 2.0f;
+	if (player_) player_->set_rate(SPEEDS[speed_index_]);
+	platform::log("player: speed %.2fx", SPEEDS[speed_index_]);
 }
 
 void PlayerScreen::draw(Renderer &r) {
@@ -420,11 +475,32 @@ void PlayerScreen::draw(Renderer &r) {
 		const double pos = pending_seek_ >= 0 ? pending_seek_ : position();
 		const double dur = duration();
 		r.text(fonts_.section, fonts_.section.ellipsize(args_.item.display_name(), 1500), 100, 900, theme::BASE_CONTENT);
-		const std::string mode = transcode_ ? "Transcode" : "Direct play";
+		std::string mode = transcode_ ? "Transcode" : "Direct play";
+		if (player_ && player_->rate() != 1.0) {
+			char sp[16];
+			snprintf(sp, sizeof(sp), "  %.2gx", player_->rate());
+			mode += sp;
+		}
 		r.text(fonts_.small, mode, 1820 - fonts_.small.measure(mode), 900, theme::BASE_CONTENT_MUTED);
-		ui::progress(r, 100, 940, 1720, 8, dur > 0 ? (float)std::min(1.0, pos / dur) : 0.0f);
+		const float bar_x = 100, bar_w = 1720, bar_y = 940;
+		ui::progress(r, bar_x, bar_y, bar_w, 8, dur > 0 ? (float)std::min(1.0, pos / dur) : 0.0f);
+		// Chapter tick marks.
+		if (dur > 0) {
+			for (const jf::Chapter &c : args_.item.chapters) {
+				if (c.start <= 0 || c.start >= dur) continue;
+				const float cx = bar_x + bar_w * (float)(c.start / dur);
+				r.rect(cx - 1, bar_y - 4, 2, 16, theme::BASE_CONTENT_MUTED);
+			}
+		}
 		const std::string times = clock_text(pos) + " / " + clock_text(dur);
 		r.text(fonts_.body, times, 100, 1000, theme::BASE_CONTENT);
+		const int chidx = chapter_at(pos);
+		if (chidx >= 0 && !args_.item.chapters[chidx].name.empty()) {
+			const std::string &nm = args_.item.chapters[chidx].name;
+			r.text(fonts_.small, nm, (1920 - fonts_.small.measure(nm)) / 2, 1000, theme::BASE_CONTENT_MUTED);
+		}
+		// Trickplay thumbnail while actively scrubbing.
+		if (pending_seek_ >= 0 && dur > 0) draw_trickplay(r, pending_seek_, bar_x, bar_w, bar_y);
 		ui::hints(r, fonts_.small,
 				{ { "\xC3\x97", state == VideoPlayer::PAUSED ? "Play" : "Pause" }, { "\xE2\x97\x80 \xE2\x96\xB6", "10 s" },
 						{ "L1 R1", "1 min" }, { "\xE2\x96\xB3", "Audio & subtitles" }, { "\xE2\x97\x8B", "Stop" } },
@@ -451,8 +527,94 @@ void PlayerScreen::draw(Renderer &r) {
 		r.pop();
 	}
 	if (countdown_ >= 0) draw_countdown(r);
+	// Speed / chapter change indicator (brief, top centre).
+	if (speed_hint_ > 0.01f || chapter_hint_ > 0.01f) {
+		const bool speed = speed_hint_ >= chapter_hint_;
+		const float a = std::min(1.0f, (speed ? speed_hint_ : chapter_hint_) * 2);
+		char buf[48];
+		if (speed) snprintf(buf, sizeof(buf), "%.2gx speed", SPEEDS[speed_index_]);
+		else snprintf(buf, sizeof(buf), "%s", chapter_label_.c_str());
+		const float w = fonts_.section.measure(buf) + 80;
+		r.push(960, 150, 1.0f, a);
+		r.rounded_rect(960 - w / 2, 110, w, 80, theme::radius_box(), theme::BASE_300.with_alpha(0.95f));
+		r.text(fonts_.section, buf, 960 - fonts_.section.measure(buf) / 2, 162, theme::BASE_CONTENT);
+		r.pop();
+	}
+	if (show_diag_) draw_diagnostics(r);
 	menu_.draw(r, fonts_);
 	if (toast_.visible()) toast_.draw(r, fonts_.body, 960, 60);
+}
+
+void PlayerScreen::draw_trickplay(Renderer &r, double target, float bar_x, float bar_w, float bar_y) {
+	const jf::Trickplay &tp = args_.item.trickplay;
+	const double dur = duration();
+	if (!tp.valid() || dur <= 0) return;
+	int thumb = (int)(target * 1000.0 / tp.interval_ms);
+	if (tp.count > 0 && thumb >= tp.count) thumb = tp.count - 1;
+	if (thumb < 0) thumb = 0;
+	const int per_tile = tp.tile_w * tp.tile_h;
+	const int tile_index = thumb / per_tile;
+	const int within = thumb % per_tile;
+	const int col = within % tp.tile_w, row = within / tp.tile_w;
+	trickplay_tile_ = tile_index;
+	const std::string url = jf::client().trickplay_tile_url(args_.item, tile_index);
+	const Texture &t = images::get(url, nullptr, 8 * 1024 * 1024);
+	// Thumbnail box above the scrub position.
+	const float aspect = tp.height > 0 ? (float)tp.width / (float)tp.height : 16.0f / 9.0f;
+	const float th = 170, tw = th * aspect;
+	float cx = bar_x + bar_w * (float)std::min(1.0, std::max(0.0, target / dur));
+	float tx = cx - tw / 2;
+	tx = std::max(bar_x, std::min(tx, bar_x + bar_w - tw));
+	const float ty = bar_y - th - 30;
+	r.rounded_rect(tx - 6, ty - 6, tw + 12, th + 12, 10, theme::BASE_300);
+	if (t.valid()) {
+		const float u0 = (float)col / tp.tile_w, u1 = (float)(col + 1) / tp.tile_w;
+		const float v0 = (float)row / tp.tile_h, v1 = (float)(row + 1) / tp.tile_h;
+		r.image_region(t, tx, ty, tw, th, u0, v0, u1, v1);
+	} else {
+		r.text(fonts_.small, clock_text(target), tx + tw / 2 - fonts_.small.measure(clock_text(target)) / 2, ty + th / 2, theme::BASE_CONTENT_MUTED);
+	}
+	// Marker triangle under the thumbnail.
+	r.rect(cx - 1, ty + th + 2, 2, 20, theme::PRIMARY);
+}
+
+void PlayerScreen::draw_diagnostics(Renderer &r) {
+	const float x = 70, y = 90, w = 620;
+	std::vector<std::pair<std::string, std::string>> rows;
+	rows.push_back({ "Play method", transcode_ ? "Transcode (server)" : "Direct play" });
+	rows.push_back({ "Server transcoding", transcode_ ? "Yes" : "No" });
+	rows.push_back({ "Container", args_.item.container.empty() ? "-" : args_.item.container });
+	VideoPlayer::Stats st = player_ ? player_->stats() : VideoPlayer::Stats();
+	std::string vcodec = !st.video_codec.empty() ? st.video_codec : args_.item.video_codec;
+	std::string acodec = !st.audio_codec.empty() ? st.audio_codec : args_.item.audio_codec;
+	int w0 = st.width > 0 ? st.width : args_.item.width, h0 = st.height > 0 ? st.height : args_.item.height;
+	char res[32];
+	snprintf(res, sizeof(res), "%dx%d", w0, h0);
+	rows.push_back({ "Video", vcodec + "  " + (w0 > 0 ? res : "-") });
+	char ach[48];
+	snprintf(ach, sizeof(ach), "%s  %dch in / %dch out", acodec.c_str(), st.audio_channels, st.out_channels);
+	rows.push_back({ "Audio", ach });
+	if (args_.item.bitrate > 0) {
+		char br[32];
+		snprintf(br, sizeof(br), "%.1f Mbps", args_.item.bitrate / 1e6);
+		rows.push_back({ "Source bitrate", br });
+	}
+	char dec[32];
+	snprintf(dec, sizeof(dec), "%.1f ms/frame", st.decode_ms);
+	rows.push_back({ "Decode", dec });
+	rows.push_back({ "Dropped frames", std::to_string(st.dropped) });
+	char spd[16];
+	snprintf(spd, sizeof(spd), "%.2gx", player_ ? player_->rate() : 1.0);
+	rows.push_back({ "Speed", spd });
+	const float h = 70 + rows.size() * 44 + 20;
+	r.rounded_rect(x, y, w, h, theme::radius_box(), theme::BASE_100.with_alpha(0.86f));
+	r.text(fonts_.card_title, "Playback info", x + 24, y + 48, theme::PRIMARY);
+	float ry = y + 90;
+	for (auto &kv : rows) {
+		r.text(fonts_.small, kv.first, x + 24, ry, theme::BASE_CONTENT_MUTED);
+		r.text(fonts_.small, kv.second, x + 250, ry, theme::BASE_CONTENT);
+		ry += 44;
+	}
 }
 
 void PlayerScreen::draw_countdown(Renderer &r) {

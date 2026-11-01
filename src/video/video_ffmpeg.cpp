@@ -345,6 +345,7 @@ public:
 			while (frames_.size() >= 2 && frames_[1].pts <= now) {
 				recycle(frames_.front());
 				frames_.pop_front();
+				dropped_++;
 			}
 			if (!frames_.empty() && (show_first || frames_.front().pts <= now + 0.01)) {
 				recycle(shown_);
@@ -361,6 +362,25 @@ public:
 	}
 
 	State state() const override { return state_; }
+	void set_rate(double r) override {
+		r = r < 0.25 ? 0.25 : r > 3.0 ? 3.0 : r;
+		if (r == rate_) return;
+		// Keep the clock continuous across the change.
+		if (!has_audio_ && wall_running_) {
+			wall_pts_ = clock();
+			wall_start_ = platform::now();
+		}
+		platform::log("ffmpeg: playback rate %.2fx", r);
+		rate_ = r;
+	}
+	double rate() const override { return rate_; }
+	Stats stats() const override {
+		threads::Lock lock(stats_mutex_);
+		Stats s = stats_;
+		s.out_channels = const_cast<AudioOut &>(audio_).channels();
+		s.dropped = dropped_;
+		return s;
+	}
 	double position() const override { return std::max(0.0, clock()); }
 	double duration() const override { return duration_; }
 	std::string error() const override { return error_; }
@@ -442,8 +462,9 @@ private:
 	};
 
 	double clock() const {
-		if (has_audio_) return audio_end_ - const_cast<AudioOut &>(audio_).queued();
-		return wall_running_ ? wall_pts_ + (platform::now() - wall_start_) : wall_pts_.load();
+		const double r = rate_;
+		if (has_audio_) return audio_end_ - const_cast<AudioOut &>(audio_).queued() * r;
+		return wall_running_ ? wall_pts_ + (platform::now() - wall_start_) * r : wall_pts_.load();
 	}
 
 	// Frame buffers are reused: a 1080p frame is 8 MB. Call with mutex_ held.
@@ -689,7 +710,12 @@ private:
 				}
 			}
 			convert_time += platform::now() - t0;
-			if (++frames_converted % 300 == 0) {
+			++frames_converted;
+			{
+				threads::Lock lock(stats_mutex_);
+				stats_.decode_ms = convert_time * 1000 / frames_converted;
+			}
+			if (frames_converted % 300 == 0) {
 				platform::log("ffmpeg: %d frames, avg convert %.1f ms, avg upload %.1f ms", frames_converted,
 						convert_time * 1000 / frames_converted, upload_time_ * 1000 / std::max(1, uploads_.load()));
 			}
@@ -701,14 +727,21 @@ private:
 			}
 		};
 		std::vector<int16_t> audio_buf;
+		double built_rate = 0;    // rate the current swr was built for
+		int out_rate = RATE;      // swr output sample rate (RATE / rate for speed)
 		auto on_audio = [&]() {
 			const double pts = pts_of(ai);
 			const int out_channels = audio_.channels();
-			if (!swr) {
+			// Rebuild the resampler when the playback speed changes. Faster
+			// playback outputs fewer samples (RATE / rate), which the audio
+			// device plays at RATE, so it finishes sooner; pitch rises.
+			if (!swr || built_rate != rate_) {
+				swr_free(&swr);
+				built_rate = rate_;
+				out_rate = (int)(RATE / built_rate + 0.5);
 				AVChannelLayout out = AV_CHANNEL_LAYOUT_STEREO;
 				if (out_channels == 8) out = AV_CHANNEL_LAYOUT_7POINT1;
-				platform::log("ffmpeg: audio %d ch -> %d ch", frame->ch_layout.nb_channels, out_channels);
-				if (swr_alloc_set_opts2(&swr, &out, AV_SAMPLE_FMT_S16, RATE, &frame->ch_layout,
+				if (swr_alloc_set_opts2(&swr, &out, AV_SAMPLE_FMT_S16, out_rate, &frame->ch_layout,
 							(AVSampleFormat)frame->format, frame->sample_rate, 0, nullptr) < 0 || swr_init(swr) < 0) {
 					swr_free(&swr);
 					return;
@@ -720,7 +753,9 @@ private:
 			uint8_t *out[1] = { reinterpret_cast<uint8_t *>(audio_buf.data()) };
 			const int got = swr_convert(swr, out, max_out, (const uint8_t **)frame->extended_data, frame->nb_samples);
 			if (got <= 0) return;
-			const double end = pts + got / (double)RATE;
+			// audio_end_ tracks source seconds: `got` samples at out_rate cover
+			// got/out_rate seconds of the source.
+			const double end = pts + got / (double)out_rate;
 			if (pts >= 0 && end < skip_until) return;
 			threads::Lock lock(mutex_);
 			if (gen != generation_ || !audio_ok_) return;
@@ -845,6 +880,14 @@ private:
 				vi >= 0 ? vdec->width : 0, vi >= 0 ? vdec->height : 0, ai >= 0 ? avcodec_get_name(adec->codec_id) : "-",
 				ai >= 0 ? adec->ch_layout.nb_channels : 0, duration_.load());
 		has_audio_ = ai >= 0 && audio_ok_;
+		{
+			threads::Lock lock(stats_mutex_);
+			stats_.video_codec = vi >= 0 ? avcodec_get_name(vdec->codec_id) : "";
+			stats_.audio_codec = ai >= 0 ? avcodec_get_name(adec->codec_id) : "";
+			stats_.width = vi >= 0 ? vdec->width : 0;
+			stats_.height = vi >= 0 ? vdec->height : 0;
+			stats_.audio_channels = ai >= 0 ? adec->ch_layout.nb_channels : 0;
+		}
 		{
 			threads::Lock lock(mutex_);
 			for (unsigned i = 0; i < fmt->nb_streams; i++) {
@@ -978,6 +1021,10 @@ private:
 	std::string thread_error_;
 	bool show_next_ = true;
 	// Wall clock, for media without audio.
+	std::atomic<double> rate_{ 1.0 };
+	std::atomic<int> dropped_{ 0 };
+	mutable threads::Mutex stats_mutex_;
+	Stats stats_;
 	std::atomic<double> wall_pts_{ 0 };
 	double wall_start_ = 0;
 	std::atomic<bool> wall_running_{ false };
