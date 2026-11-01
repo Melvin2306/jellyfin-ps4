@@ -483,7 +483,7 @@ void PlayerScreen::draw_subtitles(Renderer &r, float vx, float vy, float vw, flo
 	if (text.empty()) return;
 	// Size (percent) and distance from the bottom (pixels) from the settings.
 	const float scale = (float)settings::get_int("subtitle_size", 100) / 100.0f;
-	const float margin = (float)settings::get_int("subtitle_margin", 70);
+	const float margin = (float)settings::get_int("subtitle_margin", 80);
 	Font &f = fonts_.subtitle;
 	const float line_h = theme::SIZE_SUBTITLE * 1.3f * scale;
 	const std::vector<std::string> lines = f.wrap(text, std::min(vw, 1920.0f) * 0.8f / scale);

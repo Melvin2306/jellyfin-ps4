@@ -1,6 +1,7 @@
 #include "jellyfin.h"
 
 #include "../net/http.h"
+#include "settings.h"
 #include "../platform/platform.h"
 
 #include <cctype>
@@ -640,7 +641,7 @@ void Client::play_plan(const Item &item, bool transcode, double start_seconds, i
 					"&VideoCodec=h264&AudioCodec=aac&MaxAudioChannels=2&AudioBitrate=%d&VideoBitrate=%d&MaxHeight=1080"
 					"&MaxFramerate=30&TranscodingMaxAudioChannels=2&AllowAudioStreamCopy=false&BreakOnNonKeyFrames=false"
 					"&StartTimeTicks=%lld",
-					TRANSCODE_AUDIO_BITRATE, TRANSCODE_VIDEO_BITRATE, (long long)(start_seconds * 1e7));
+					TRANSCODE_AUDIO_BITRATE, (int)settings::get_int("max_bitrate", TRANSCODE_VIDEO_BITRATE), (long long)(start_seconds * 1e7));
 			plan.url = url("/Videos/" + id + "/stream.ts?static=false&" + q + extra);
 			// Never SubtitleStreamIndex: that would make the server burn subtitles in.
 			if (audio_index >= 0) plan.url += "&AudioStreamIndex=" + std::to_string(audio_index);

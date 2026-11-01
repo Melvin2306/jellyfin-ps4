@@ -1,5 +1,6 @@
 #include "detail_screen.h"
 
+#include "../core/settings.h"
 #include "../core/tracks.h"
 #include "../net/images.h"
 #include "../platform/platform.h"
@@ -170,7 +171,7 @@ void DetailScreen::update(double dt, uint32_t pressed) {
 		platform::log("detail: play '%s' transcode=%d start=%.0f", item_.name.c_str(), b.transcode, b.start);
 		PlayerScreen::Args args;
 		args.item = item_;
-		args.transcode = b.transcode;
+		args.transcode = b.transcode || settings::get_bool("always_transcode");
 		args.start = b.start;
 		args.audio = audio_;
 		// A subtitle that needs direct play falls back to off when transcoding.

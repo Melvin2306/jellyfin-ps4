@@ -8,8 +8,16 @@ namespace tracks {
 
 namespace {
 
+// Lower case, with ISO 639-2 terminology codes mapped to the bibliographic
+// ones Jellyfin mostly uses (deu -> ger, fra -> fre...), and 639-1 codes.
 std::string lower(std::string s) {
 	for (char &c : s) c = (char)tolower((unsigned char)c);
+	static const char *same[][2] = { { "deu", "ger" }, { "de", "ger" }, { "fra", "fre" }, { "fr", "fre" }, { "nld", "dut" },
+		{ "nl", "dut" }, { "zho", "chi" }, { "zh", "chi" }, { "ces", "cze" }, { "en", "eng" }, { "es", "spa" }, { "it", "ita" },
+		{ "pt", "por" }, { "ru", "rus" }, { "ja", "jpn" }, { "ko", "kor" }, { "pl", "pol" }, { "tr", "tur" }, { "sv", "swe" },
+		{ "da", "dan" }, { "no", "nor" }, { "nob", "nor" }, { "fi", "fin" }, { "ar", "ara" }, { "hi", "hin" } };
+	for (auto &p : same)
+		if (s == p[0]) return p[1];
 	return s;
 }
 

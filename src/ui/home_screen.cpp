@@ -3,14 +3,15 @@
 #include "../platform/platform.h"
 #include "browse_screen.h"
 #include "search_screen.h"
+#include "settings_screen.h"
 #include "theme.h"
 
 #include <algorithm>
 
 namespace {
 const char *NAMES[] = { "Search", "Continue Watching", "Next Up", "Favorites", "Movies", "TV Shows", "Collections", "Genres",
-	"Sign out" };
-const float SIDE_X = 70, SIDE_W = 330, SIDE_TOP = 200, SIDE_ROW = 76;
+	"Settings", "Sign out" };
+const float SIDE_X = 70, SIDE_W = 330, SIDE_TOP = 190, SIDE_ROW = 74;
 const float GRID_X = 470, GRID_TOP = 150, VIEW_TOP = 130, VIEW_BOTTOM = 1000;
 } // namespace
 
@@ -70,6 +71,8 @@ void HomeScreen::update(double dt, uint32_t pressed) {
 				if (pressed & platform::BUTTON_ACCEPT) jf::client().logout();
 			} else if (section_ == SEARCH) {
 				if (pressed & platform::BUTTON_ACCEPT) nav_.push(std::unique_ptr<Screen>(new SearchScreen(fonts_, nav_)));
+			} else if (section_ == SETTINGS) {
+				if (pressed & platform::BUTTON_ACCEPT) nav_.push(std::unique_ptr<Screen>(new SettingsScreen(fonts_, nav_)));
 			} else if (!grid.items().empty()) {
 				in_grid_ = true;
 			} else if ((pressed & platform::BUTTON_ACCEPT) && !loading_[section_]) {
@@ -88,6 +91,10 @@ void HomeScreen::update(double dt, uint32_t pressed) {
 		const PosterGrid::Action a = grid.update(dt, pressed);
 		if (a == PosterGrid::LEAVE_LEFT) in_grid_ = false;
 		if (a == PosterGrid::OPEN && grid.current()) open_item(fonts_, nav_, *grid.current());
+	}
+	if (pressed & platform::BUTTON_OPTIONS) {
+		nav_.push(std::unique_ptr<Screen>(new SettingsScreen(fonts_, nav_)));
+		return;
 	}
 	if (pressed & platform::BUTTON_TRIANGLE) load(section_);
 	if ((pressed & platform::BUTTON_SQUARE) && sortable(section_)) {
@@ -123,6 +130,8 @@ void HomeScreen::draw(Renderer &r) {
 	}
 	if (section_ == SEARCH) {
 		r.text(fonts_.body, "Press \xC3\x97 to search movies, shows and episodes.", GRID_X, 200, theme::BASE_CONTENT_MUTED);
+	} else if (section_ == SETTINGS) {
+		r.text(fonts_.body, "Press Ã (or OPTIONS anywhere on Home) for playback, subtitle and audio settings.", GRID_X, 200, theme::BASE_CONTENT_MUTED);
 	} else if (section_ == SIGN_OUT) {
 		r.text(fonts_.body, "Press \xC3\x97 to sign out of " + jf::client().server(), GRID_X, 200, theme::BASE_CONTENT_MUTED);
 		r.text(fonts_.small, "Your server address and username stay remembered.", GRID_X, 245, theme::BASE_CONTENT_MUTED);

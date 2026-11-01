@@ -26,6 +26,7 @@ This is an unofficial third-party client. It is not affiliated with the Jellyfin
   - Audio and subtitle selection (details screen, or △ in the player). Embedded text and image (PGS/VobSub) subtitles are rendered in the app in direct play; external subtitles are fetched as SRT. Chosen languages are remembered per user.
   - Next episode: a 10-second countdown at the end of an episode (× play now, ○ cancel).
   - Skip intro / recap / credits buttons from the server's media segments.
+- **Settings** (OPTIONS on Home): direct play vs. always transcode, maximum transcode bitrate, default audio / subtitle language, subtitle size and position, autoplay next episode, audio output (Stereo or Multichannel PCM 5.1/7.1).
 - **Controls**: D-pad move, × select, ○ back. Player: × pause, ◀ ▶ 10 s, L1 / R1 1 min, ○ stop.
 
 ## Requirements
