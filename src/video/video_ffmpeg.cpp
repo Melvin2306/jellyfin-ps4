@@ -12,6 +12,7 @@
 #include "nv12.h"
 
 #include "../core/languages.h"
+#include "../core/settings.h"
 #include "../net/byte_source.h"
 #include "../net/urls.h"
 #include "../platform/platform.h"
@@ -46,7 +47,8 @@ const int MAX_WIDTH = 2560;
 const int TEXTURE_ALIGN = 32; // frame rows are padded to this many pixels (see the converter)
 const size_t MAX_FRAMES = 6;
 const double MAX_QUEUED_AUDIO = 1.0; // seconds
-const int RATE = 48000, CHANNELS = 2;
+const int RATE = 48000;
+[[maybe_unused]] const int CHANNELS = 2; // desktop (SDL) output; the PS4 port picks 2 or 8
 const size_t THREAD_STACK = 1024 * 1024;
 const int AVIO_BUFFER = 256 * 1024;
 
@@ -127,9 +129,24 @@ public:
 			const int rc = sceAudioOutInit();
 			platform::log("ffmpeg: sceAudioOutInit -> 0x%08X", rc);
 		}
-		port_ = sceAudioOutOpen(ORBIS_USER_SERVICE_USER_ID_SYSTEM, ORBIS_AUDIO_OUT_PORT_TYPE_MAIN, 0, GRAIN, RATE,
-				ORBIS_AUDIO_OUT_PARAM_FORMAT_S16_STEREO);
-		platform::log("ffmpeg: audio port %d", port_);
+		// Multichannel PCM (setting): an 8-channel port in the "standard"
+		// (WAVE / FFmpeg 7.1) channel order; the system downmixes or encodes it
+		// for the HDMI output as set in the PS4's sound settings.
+		channels_ = 2;
+		if (settings::get_string("audio_output") == "multichannel") {
+			const uint32_t S16_8CH_STD = 6; // SCE_AUDIO_OUT_PARAM_FORMAT_S16_8CH_STD (not in the OpenOrbis headers)
+			port_ = sceAudioOutOpen(ORBIS_USER_SERVICE_USER_ID_SYSTEM, ORBIS_AUDIO_OUT_PORT_TYPE_MAIN, 0, GRAIN, RATE, S16_8CH_STD);
+			if (port_ >= 0) {
+				channels_ = 8;
+			} else {
+				platform::log("ffmpeg: 8-channel audio port failed (0x%08X); falling back to stereo", (uint32_t)port_);
+			}
+		}
+		if (channels_ == 2) {
+			port_ = sceAudioOutOpen(ORBIS_USER_SERVICE_USER_ID_SYSTEM, ORBIS_AUDIO_OUT_PORT_TYPE_MAIN, 0, GRAIN, RATE,
+					ORBIS_AUDIO_OUT_PARAM_FORMAT_S16_STEREO);
+		}
+		platform::log("ffmpeg: audio port %d, %d channels", port_, channels_);
 		if (port_ < 0) return false;
 		stop_ = false;
 		running_ = true;
@@ -147,13 +164,15 @@ public:
 
 	void write(const int16_t *samples, int frames) {
 		threads::Lock lock(mutex_);
-		ring_.insert(ring_.end(), samples, samples + (size_t)frames * CHANNELS);
+		ring_.insert(ring_.end(), samples, samples + (size_t)frames * channels_);
 	}
 
 	double queued() {
 		threads::Lock lock(mutex_);
-		return (ring_.size() / CHANNELS + in_flight_) / (double)RATE;
+		return (ring_.size() / channels_ + in_flight_) / (double)RATE;
 	}
+
+	int channels() const { return channels_; }
 
 	void set_paused(bool paused) { paused_ = paused; }
 
@@ -171,7 +190,7 @@ private:
 	}
 
 	void loop() {
-		std::vector<int16_t> grain(GRAIN * CHANNELS);
+		std::vector<int16_t> grain(GRAIN * channels_);
 		while (!stop_) {
 			bool have = false;
 			{
@@ -195,6 +214,7 @@ private:
 	}
 
 	int port_ = -1;
+	int channels_ = 2;
 	threads::Mutex mutex_;
 	std::deque<int16_t> ring_;
 	int in_flight_ = 0;
@@ -223,6 +243,7 @@ public:
 	double queued() { return SDL_GetQueuedAudioSize(dev_) / (double)(RATE * CHANNELS * 2); }
 	void set_paused(bool paused) { SDL_PauseAudioDevice(dev_, paused ? 1 : 0); }
 	void clear() { SDL_ClearQueuedAudio(dev_); }
+	int channels() const { return CHANNELS; }
 
 private:
 	SDL_AudioDeviceID dev_ = 0;
@@ -682,8 +703,11 @@ private:
 		std::vector<int16_t> audio_buf;
 		auto on_audio = [&]() {
 			const double pts = pts_of(ai);
+			const int out_channels = audio_.channels();
 			if (!swr) {
 				AVChannelLayout out = AV_CHANNEL_LAYOUT_STEREO;
+				if (out_channels == 8) out = AV_CHANNEL_LAYOUT_7POINT1;
+				platform::log("ffmpeg: audio %d ch -> %d ch", frame->ch_layout.nb_channels, out_channels);
 				if (swr_alloc_set_opts2(&swr, &out, AV_SAMPLE_FMT_S16, RATE, &frame->ch_layout,
 							(AVSampleFormat)frame->format, frame->sample_rate, 0, nullptr) < 0 || swr_init(swr) < 0) {
 					swr_free(&swr);
@@ -692,7 +716,7 @@ private:
 			}
 			const int max_out = swr_get_out_samples(swr, frame->nb_samples);
 			if (max_out <= 0) return;
-			audio_buf.resize((size_t)max_out * CHANNELS);
+			audio_buf.resize((size_t)max_out * out_channels);
 			uint8_t *out[1] = { reinterpret_cast<uint8_t *>(audio_buf.data()) };
 			const int got = swr_convert(swr, out, max_out, (const uint8_t **)frame->extended_data, frame->nb_samples);
 			if (got <= 0) return;
