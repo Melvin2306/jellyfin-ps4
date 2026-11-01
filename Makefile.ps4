@@ -21,11 +21,11 @@ OUT         := build_ps4
 STAGE       := $(OUT)/pkg
 
 SRCS        := src/main.cpp src/platform/platform_ps4.cpp src/platform/ime_ps4.cpp src/render/renderer.cpp src/render/font.cpp src/render/bidi.cpp \
-               src/core/json.cpp src/core/jellyfin.cpp src/core/settings.cpp src/core/subtitles.cpp src/core/tracks.cpp \
+               src/core/json.cpp src/core/jellyfin.cpp src/core/settings.cpp src/core/subtitles.cpp src/core/tracks.cpp src/core/remote.cpp \
                src/net/http.cpp src/net/http_ps4.cpp src/net/images.cpp src/net/range_reader.cpp src/net/stream_reader.cpp \
-               src/net/byte_source.cpp src/net/urls.cpp src/net/discovery.cpp \
+               src/net/byte_source.cpp src/net/urls.cpp src/net/discovery.cpp src/net/update.cpp src/net/websocket.cpp \
                src/ui/components.cpp src/ui/theme.cpp src/ui/keyboard.cpp src/ui/login_screen.cpp src/ui/home_screen.cpp \
-               src/ui/detail_screen.cpp src/ui/player_screen.cpp src/ui/track_menu.cpp src/ui/poster_grid.cpp src/ui/browse_screen.cpp src/ui/search_screen.cpp src/ui/settings_screen.cpp src/ui/filter_panel.cpp \
+               src/ui/detail_screen.cpp src/ui/player_screen.cpp src/ui/track_menu.cpp src/ui/poster_grid.cpp src/ui/browse_screen.cpp src/ui/search_screen.cpp src/ui/settings_screen.cpp src/ui/filter_panel.cpp src/ui/screensaver.cpp \
                src/video/video_ffmpeg.cpp src/video/video_player.cpp
 OBJS        := $(patsubst src/%.cpp,$(OUT)/obj/%.o,$(SRCS))
 

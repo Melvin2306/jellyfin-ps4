@@ -2,6 +2,7 @@
 
 #include "../core/jellyfin.h"
 #include "../core/settings.h"
+#include "../net/update.h"
 #include "../platform/platform.h"
 #include "components.h"
 #include "theme.h"
@@ -76,10 +77,39 @@ void SettingsScreen::build() {
 		add(r, std::to_string(settings::get_int("subtitle_margin", 80)));
 	}
 	{
+		Row r{ "Subtitle background", "A dark box behind the text.", "subtitle_bg" };
+		r.is_bool = true;
+		r.options = { { "On", "1" }, { "Off", "0" } };
+		add(r, settings::get_bool("subtitle_bg", true) ? "1" : "0");
+	}
+	{
+		Row r{ "Subtitle outline", "A black outline (used when the background box is off).", "subtitle_outline" };
+		r.is_bool = true;
+		r.options = { { "On", "1" }, { "Off", "0" } };
+		add(r, settings::get_bool("subtitle_outline", true) ? "1" : "0");
+	}
+	{
+		Row r{ "Subtitle colour", "", "subtitle_color" };
+		r.options = { { "White", "white" }, { "Yellow", "yellow" }, { "Cyan", "cyan" }, { "Green", "green" } };
+		add(r, settings::get_string("subtitle_color", "white"));
+	}
+	{
 		Row r{ "Autoplay next episode", "Count down and play the next episode when one ends.", "autoplay_next" };
 		r.is_bool = true;
 		r.options = { { "On", "1" }, { "Off", "0" } };
 		add(r, settings::get_bool("autoplay_next", true) ? "1" : "0");
+	}
+	{
+		Row r{ "Screensaver", "Show backdrop art after a while with no input (prevents OLED burn-in).", "screensaver" };
+		r.is_bool = true;
+		r.options = { { "On", "1" }, { "Off", "0" } };
+		add(r, settings::get_bool("screensaver", true) ? "1" : "0");
+	}
+	{
+		Row r{ "Screensaver delay", "", "screensaver_seconds" };
+		r.is_int = true;
+		r.options = { { "1 min", "60" }, { "2 min", "120" }, { "3 min", "180" }, { "5 min", "300" }, { "10 min", "600" } };
+		add(r, std::to_string(settings::get_int("screensaver_seconds", 120)));
 	}
 	{
 		Row r{ "Audio output", "Multichannel sends 5.1/7.1 as PCM; the PS4 then downmixes or encodes it as set in Settings > Sound > Audio Output Settings. Bitstream passthrough of the file's AC3/DTS isn't available to homebrew.", "audio_output" };
@@ -138,5 +168,9 @@ void SettingsScreen::draw(Renderer &r) {
 		r.text(fonts_.small, fonts_.small.ellipsize(rows_[row_].help, 1600), LEFT, 1015, theme::BASE_CONTENT_MUTED);
 	}
 	ui::hints(r, fonts_.small, { { "\xE2\x97\x80 \xE2\x96\xB6", "Change" }, { "\xE2\x97\x8B", "Back" } }, LEFT, 1055);
+	const std::string upd = update::available();
+	if (!upd.empty()) {
+		r.text(fonts_.small, "Update " + upd + " at " + update::REPO_URL, LEFT, 1015, theme::SECONDARY);
+	}
 	r.text(fonts_.small, "Jellyfin PS4 " APP_VERSION, 1920 - 330, 1055, theme::BASE_CONTENT_MUTED);
 }

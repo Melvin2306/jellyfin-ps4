@@ -29,6 +29,7 @@ public:
 	~PlayerScreen() override;
 	void update(double dt, uint32_t pressed) override;
 	void draw(Renderer &r) override;
+	bool suppress_screensaver() const override;
 
 private:
 	void start(bool transcode, double at);

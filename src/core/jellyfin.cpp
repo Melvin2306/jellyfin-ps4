@@ -89,6 +89,8 @@ Item Item::from_json(const Json &j) {
 	it.rating = j["CommunityRating"].as_number(0);
 	it.sort_name = j["SortName"].as_string(it.name);
 	it.image_tag = j["ImageTags"]["Primary"].as_string("");
+	const Json &bd = j["BackdropImageTags"];
+	if (bd.is_array() && bd.size() > 0) it.backdrop_tag = bd[0].as_string("");
 	const Json &sources = j["MediaSources"];
 	if (sources.is_array() && sources.size() > 0) {
 		const Json &ms = sources[0];
@@ -380,6 +382,41 @@ std::vector<std::string> Client::auth_headers() const {
 	return { "Authorization: " + auth_value() };
 }
 
+bool Client::websocket_target(std::string &host, int &port, std::string &path) const {
+	if (token_.empty()) return false;
+	// Parse scheme://host[:port] from server_.
+	std::string s = server_;
+	const size_t scheme = s.find("://");
+	if (scheme != std::string::npos) s = s.substr(scheme + 3);
+	const size_t slash = s.find('/');
+	if (slash != std::string::npos) s = s.substr(0, slash);
+	port = 80;
+	const size_t colon = s.rfind(':');
+	if (colon != std::string::npos) {
+		port = atoi(s.c_str() + colon + 1);
+		host = s.substr(0, colon);
+	} else {
+		host = s;
+	}
+	path = "/socket?api_key=" + url_encode(token_) + "&deviceId=" + url_encode(device_id_);
+	return !host.empty() && port > 0;
+}
+
+void Client::register_capabilities() {
+	if (token_.empty()) return;
+	Json body = Json::object();
+	Json media = Json::array();
+	media.push("Video");
+	body.set("PlayableMediaTypes", media);
+	Json cmds = Json::array();
+	for (const char *c : { "DisplayMessage", "PlayState", "Play" }) cmds.push(c);
+	body.set("SupportedCommands", cmds);
+	body.set("SupportsMediaControl", true);
+	body.set("SupportsPersistentIdentifier", true);
+	post_json("/Sessions/Capabilities/Full", body);
+	platform::log("jellyfin: registered remote-control capabilities");
+}
+
 std::string Client::url(const std::string &path) const {
 	return server_ + path;
 }
@@ -631,6 +668,17 @@ std::string Client::person_image_url(const Person &person, int height) const {
 std::string Client::trickplay_tile_url(const Item &item, int tile_index) const {
 	return url("/Videos/" + item.id + "/Trickplay/" + std::to_string(item.trickplay.width) + "/" +
 			std::to_string(tile_index) + ".jpg?mediaSourceId=" + url_encode(item.media_source_id));
+}
+
+void Client::random_backdrops(ItemsCallback done) {
+	get_items("/Items?userId=" + user_id_ +
+			"&IncludeItemTypes=Movie,Series&Recursive=true&SortBy=Random&Limit=24&Fields=Overview&ImageTypes=Backdrop&EnableImageTypes=Backdrop,Primary&ImageTypeLimit=1&EnableUserData=false", done);
+}
+
+std::string Client::backdrop_url(const Item &item, int width) const {
+	if (item.backdrop_tag.empty()) return "";
+	return url("/Items/" + item.id + "/Images/Backdrop/0?fillWidth=" + std::to_string(width) + "&quality=85&format=Jpg&tag=" +
+			item.backdrop_tag);
 }
 
 void Client::genres(ItemsCallback done) {

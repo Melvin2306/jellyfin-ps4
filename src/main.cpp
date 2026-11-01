@@ -3,13 +3,18 @@
 // are adapted from Stremio PS4 (GPL-3.0); see README.md.
 
 #include "core/jellyfin.h"
+#include "core/settings.h"
 #include "net/http.h"
 #include "net/images.h"
+#include "core/remote.h"
+#include "net/update.h"
 #include "platform/platform.h"
 #include "render/font.h"
 #include "render/renderer.h"
 #include "ui/home_screen.h"
 #include "ui/login_screen.h"
+#include "ui/player_screen.h"
+#include "ui/screensaver.h"
 #include "ui/theme.h"
 
 #include <algorithm>
@@ -83,6 +88,8 @@ int main() {
 
 	jf::Client &client = jf::client();
 	client.init();
+	update::start(); // non-blocking GitHub tag check
+	remote::start();  // remote-control target (idles until signed in)
 	platform::log("ready");
 
 	struct Stack : Navigator {
@@ -116,6 +123,10 @@ int main() {
 	InputRepeater input;
 	double last = platform::now();
 	uint32_t held = 0;
+	static Screensaver screensaver;
+	double idle = 0;
+	std::string banner;
+	double banner_time = 0;
 	while (platform::poll(held)) {
 		const double now = platform::now();
 		const double dt = std::min(now - last, 0.1);
@@ -123,6 +134,28 @@ int main() {
 
 		http::poll();
 		images::update();
+		// A phone/web-UI "Play" request: fetch the item and start it.
+		{
+			std::string m = remote::take_message();
+			if (!m.empty()) {
+				banner = m;
+				banner_time = 5.0;
+			}
+			banner_time = std::max(0.0, banner_time - dt);
+		}
+		remote::Command rc;
+		if (client.logged_in() && remote::poll_play(rc)) {
+			const double start = rc.start_seconds;
+			Stack *st = &stack;
+			Fonts *fp = &fonts;
+			client.item(rc.item_id, [st, fp, start](bool ok, const std::string &, const std::vector<jf::Item> &items) {
+				if (!ok || items.empty()) return;
+				PlayerScreen::Args a;
+				a.item = items[0];
+				a.start = start > 0 ? start : items[0].position_seconds();
+				st->push(std::unique_ptr<Screen>(new PlayerScreen(*fp, *st, a)));
+			});
+		}
 		if (client.auth_rev != seen_auth_rev) {
 			seen_auth_rev = client.auth_rev;
 			stack.clear();
@@ -136,9 +169,32 @@ int main() {
 		}
 
 		Screen &top = *stack.screens.back();
-		top.update(dt, input.update(held, now));
+		uint32_t pressed = input.update(held, now);
+		// Idle screensaver (default on). Any input wakes it (and is swallowed).
+		const double timeout = (double)settings::get_int("screensaver_seconds", 120);
+		const bool enabled = settings::get_bool("screensaver", true) && timeout > 0;
+		if (held != 0 || pressed != 0) idle = 0;
+		else idle += dt;
+		if (screensaver.active()) {
+			screensaver.update(dt);
+			if (pressed != 0 || top.suppress_screensaver()) {
+				screensaver.deactivate();
+				idle = 0;
+				pressed = 0; // the wake press doesn't act on the screen below
+			}
+		} else if (enabled && idle >= timeout && !top.suppress_screensaver()) {
+			screensaver.activate();
+			pressed = 0;
+		}
+		top.update(dt, pressed);
 		renderer.begin_frame(theme::BASE_100);
 		top.draw(renderer);
+		if (screensaver.active()) screensaver.draw(renderer, fonts);
+		if (banner_time > 0 && !screensaver.active()) {
+			const float w = fonts.body.measure(banner) + 80;
+			renderer.rounded_rect((1920 - w) / 2, 40, w, 70, theme::radius_box(), theme::SECONDARY);
+			renderer.text(fonts.body, banner, (1920 - fonts.body.measure(banner)) / 2, 84, theme::PRIMARY_CONTENT);
+		}
 		renderer.end_frame();
 		platform::present();
 		stack.apply();

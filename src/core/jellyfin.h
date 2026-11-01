@@ -56,7 +56,8 @@ struct Item {
 	bool played = false, favorite = false;
 	double rating = 0;     // CommunityRating
 	std::string sort_name;
-	std::string image_tag; // Primary image tag ("" = none)
+	std::string image_tag;    // Primary image tag ("" = none)
+	std::string backdrop_tag; // first Backdrop image tag ("" = none)
 	std::string media_source_id;
 	std::string video_codec, audio_codec;
 	int width = 0, height = 0, audio_channels = 0;
@@ -169,6 +170,9 @@ public:
 	void browse(const std::string &params, ItemsCallback done);
 	void search(const std::string &term, ItemsCallback done);
 	void genres(ItemsCallback done);
+	// A random set of items that have backdrop art (for the screensaver).
+	void random_backdrops(ItemsCallback done);
+	std::string backdrop_url(const Item &item, int width) const;
 	void collections(ItemsCallback done);
 	void similar(const std::string &item_id, ItemsCallback done);
 	void person_items(const std::string &person_id, ItemsCallback done);
@@ -216,6 +220,10 @@ public:
 	void report_stop(const Item &item, const PlayPlan &plan, double position);
 
 	std::vector<std::string> auth_headers() const;
+	// Remote control: the WebSocket target (host, port, "/socket?api_key=..").
+	bool websocket_target(std::string &host, int &port, std::string &path) const;
+	// Registers this session's remote-control capabilities with the server.
+	void register_capabilities();
 
 private:
 	std::string auth_value() const;

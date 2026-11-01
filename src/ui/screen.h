@@ -32,6 +32,9 @@ public:
 	// `pressed` = platform::Button flags pressed this frame (with auto-repeat).
 	virtual void update(double dt, uint32_t pressed) = 0;
 	virtual void draw(Renderer &r) = 0;
+	// True while the screen must not be covered by the idle screensaver
+	// (e.g. video playing).
+	virtual bool suppress_screensaver() const { return false; }
 };
 
 // Screen stack: Home -> Details -> Player. Changes are applied after the

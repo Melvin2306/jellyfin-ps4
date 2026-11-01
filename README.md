@@ -33,7 +33,10 @@ This is an unofficial third-party client. It is not affiliated with the Jellyfin
   - Audio and subtitle selection (details screen, or △ in the player). Embedded text and image (PGS/VobSub) subtitles are rendered in the app in direct play; external subtitles are fetched as SRT. Chosen languages are remembered per user, and per series (a TV show's choice overrides the global default for that show).
   - Next episode: a 10-second countdown at the end of an episode (× play now, ○ cancel).
   - Skip intro / recap / credits buttons from the server's media segments.
-- **Settings** (OPTIONS on Home): direct play vs. always transcode, maximum transcode bitrate, default audio / subtitle language, subtitle size and position, autoplay next episode, audio output (Stereo or Multichannel PCM 5.1/7.1).
+- **Remote control**: the PS4 registers as a Jellyfin remote-control target, so a phone or the web UI can play/pause/seek/stop it and start a title on it (over the server's WebSocket).
+- **Screensaver**: after a configurable idle time (default on, 2 min) backdrop art is shown to avoid OLED burn-in; any button dismisses it. Not shown while a video is playing.
+- **Update check**: on launch the app checks this repo's GitHub tags and, if a newer version is tagged, shows a non-blocking "Update available" note with the repo link. It never downloads or self-updates (source-only).
+- **Settings** (OPTIONS on Home): direct play vs. always transcode, maximum transcode bitrate, default audio / subtitle language, subtitle size, position, background box, outline and colour, autoplay next episode, audio output (Stereo or Multichannel PCM 5.1/7.1), screensaver.
 - **Player**: scrub-bar thumbnails (trickplay, when the server has generated them), chapter markers with chapter skip (L2 / R2), playback speed 0.5x–2.0x (▲ / ▼), and a playback-info overlay (□) showing direct play vs. transcode, codecs, resolution, bitrate, decode time and dropped frames.
 - **Controls**: D-pad move, × select, ○ back. Player: × pause, ◀ ▶ 10 s, L1 / R1 1 min, ▲ / ▼ speed, L2 / R2 chapter, □ info, △ audio & subtitles, ○ stop.
 

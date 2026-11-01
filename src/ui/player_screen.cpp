@@ -1,5 +1,6 @@
 #include "player_screen.h"
 
+#include "../core/remote.h"
 #include "../core/settings.h"
 #include "../core/tracks.h"
 #include "../net/images.h"
@@ -246,6 +247,10 @@ void PlayerScreen::stop_reporting() {
 	have_plan_ = false;
 }
 
+bool PlayerScreen::suppress_screensaver() const {
+	return player_ && player_->state() == VideoPlayer::PLAYING;
+}
+
 void PlayerScreen::exit() {
 	platform::log("player: exit at %.0f s", last_position_);
 	stop_reporting();
@@ -351,6 +356,31 @@ void PlayerScreen::update(double dt, uint32_t pressed) {
 	overlay_timer_ = std::max(0.0, overlay_timer_ - dt);
 	const bool show = overlay_timer_ > 0 || state != VideoPlayer::PLAYING;
 	overlay_ = ui::approach(overlay_, show ? 1.0f : 0.0f, dt);
+
+	// Remote-control commands from a phone / the web UI.
+	remote::Command rc;
+	while (remote::poll_playstate(rc)) {
+		if (!player_) break;
+		switch (rc.type) {
+			case remote::Command::STOP: exit(); return;
+			case remote::Command::PAUSE: player_->pause(); break;
+			case remote::Command::UNPAUSE: player_->play(); break;
+			case remote::Command::PLAYPAUSE:
+				if (player_->state() == VideoPlayer::PLAYING) player_->pause();
+				else player_->play();
+				break;
+			case remote::Command::SEEK:
+				pending_seek_ = std::max(0.0, rc.seek_seconds);
+				seek_timer_ = 0.2;
+				overlay_timer_ = OVERLAY_SECONDS;
+				break;
+			case remote::Command::NEXT:
+				if (has_next_) { play_next(); return; }
+				break;
+			case remote::Command::PREV: player_->seek(0); break;
+			case remote::Command::PLAY: break; // handled by the main loop
+		}
+	}
 
 	if (pressed & platform::BUTTON_BACK) {
 		exit();
@@ -655,13 +685,26 @@ void PlayerScreen::draw_subtitles(Renderer &r, float vx, float vy, float vw, flo
 	const std::vector<std::string> lines = f.wrap(text, std::min(vw, 1920.0f) * 0.8f / scale);
 	float bottom = std::min(vy + vh, 1080.0f) - margin;
 	if (overlay_ > 0.5f) bottom = std::min(bottom, 1080.0f - 230);
+	// Appearance (settings): background box, outline, text colour.
+	const bool box = settings::get_bool("subtitle_bg", true);
+	const bool outline = settings::get_bool("subtitle_outline", true);
+	const std::string colour = settings::get_string("subtitle_color", "white");
+	const Color fg = colour == "yellow" ? rgb(0xFFE24A) : colour == "cyan" ? rgb(0x7DF0FF)
+			: colour == "green" ? rgb(0x9CFF7D) : rgb(0xFFFFFF);
 	float baseline = bottom - (lines.size() - 1) * line_h;
 	for (const std::string &line : lines) {
 		const float w = f.measure(line);
 		r.push(960, baseline, scale, 1.0f);
 		const float x = 960 - w / 2;
-		r.rounded_rect(x - 14, baseline - theme::SIZE_SUBTITLE * 0.95f, w + 28, theme::SIZE_SUBTITLE * 1.3f, 8, rgb(0x000000, 0.6f));
-		r.text(f, line, x, baseline, rgb(0xFFFFFF));
+		if (box) r.rounded_rect(x - 14, baseline - theme::SIZE_SUBTITLE * 0.95f, w + 28, theme::SIZE_SUBTITLE * 1.3f, 8, rgb(0x000000, 0.6f));
+		if (outline && !box) {
+			const Color bl = rgb(0x000000);
+			const float o = 2.0f;
+			for (int dy = -1; dy <= 1; dy++)
+				for (int dx = -1; dx <= 1; dx++)
+					if (dx || dy) r.text(f, line, x + dx * o, baseline + dy * o, bl);
+		}
+		r.text(f, line, x, baseline, fg);
 		r.pop();
 		baseline += line_h;
 	}

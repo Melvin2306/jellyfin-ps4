@@ -3,6 +3,7 @@
 #include "../platform/platform.h"
 #include "browse_screen.h"
 #include "detail_screen.h"
+#include "../net/update.h"
 #include "search_screen.h"
 #include "settings_screen.h"
 #include "theme.h"
@@ -174,6 +175,11 @@ void HomeScreen::draw(Renderer &r) {
 	r.rect(0, 0, SIDE_X + SIDE_W + 30, 1080, theme::BASE_200);
 	r.text(fonts_.page_header, "Jellyfin", SIDE_X, 110, theme::PRIMARY);
 	r.text(fonts_.small, jf::client().user_name(), SIDE_X, 155, theme::BASE_CONTENT_MUTED);
+	const std::string upd = update::available();
+	if (!upd.empty()) {
+		r.rounded_rect(SIDE_X - 10, 1000, SIDE_W - 20, 56, theme::radius_field(), theme::SECONDARY);
+		r.text(fonts_.small, "Update " + upd + " available", SIDE_X + 10, 1034, theme::PRIMARY_CONTENT);
+	}
 	for (int i = 0; i < SECTIONS; i++) {
 		const float y = SIDE_TOP + i * SIDE_ROW + (i >= SETTINGS ? 24 : 0);
 		const float h = SIDE_ROW - 12;
