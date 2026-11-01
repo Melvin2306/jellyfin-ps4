@@ -11,9 +11,9 @@
 # is "MM.mm" as the PS4 expects.
 APP_VERSION := $(shell cat VERSION)
 PKG_VERSION := $(shell awk -F. '{ printf "%02d.%02d", $$1, $$2 }' VERSION)
-TITLE       := Jellyfin
-TITLE_ID    := JFIN00001
-CONTENT_ID  := IV0000-JFIN00001_00-JELLYFINPS4CLNT0
+TITLE       := Jellyfin for PS4 (unofficial)
+TITLE_ID    := JFPS40001
+CONTENT_ID  := IV0000-JFPS40001_00-JFPS4UNOFFICIAL0
 
 TOOLCHAIN   := $(OO_PS4_TOOLCHAIN)
 BIN         := $(TOOLCHAIN)/bin/linux

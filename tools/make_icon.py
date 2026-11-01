@@ -1,30 +1,36 @@
 #!/usr/bin/env python3
-"""Renders sce_sys/icon0.png (512x512 RGB): a Jellyfin-style mark (a triangle
-outline around a smaller filled triangle, purple -> blue gradient) on a dark
-background. Pure Python (no PIL), 4x4 supersampling."""
+"""Renders sce_sys/icon0.png (512x512 RGB): the app's own mark, a rounded
+"screen" outline with a play triangle inside (teal -> indigo gradient) on a dark
+background. Deliberately not the Jellyfin logo. Pure Python (no PIL), 4x4 supersampling."""
 import struct, zlib, sys, os
 
 W = H = 512
 SS = 4
-BG = (16, 16, 20)
-C1 = (0xAA, 0x5C, 0xC3)  # Jellyfin purple
-C2 = (0x00, 0xA4, 0xDC)  # Jellyfin blue
+BG = (14, 18, 26)
+C1 = (0x2E, 0xD3, 0xB7)  # teal
+C2 = (0x5B, 0x5F, 0xEF)  # indigo
 
-def tri(cx, top, bottom, half):
-    return [(cx, top), (cx + half, bottom), (cx - half, bottom)]
+def in_rrect(p, x0, y0, x1, y1, r):
+    x, y = p
+    if x < x0 or x > x1 or y < y0 or y > y1:
+        return False
+    cx = min(max(x, x0 + r), x1 - r)
+    cy = min(max(y, y0 + r), y1 - r)
+    return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
 
-def inside(p, t):
+def in_tri(p, t):
     (x, y) = p
     def s(a, b):
         return (b[0]-a[0])*(y-a[1]) - (b[1]-a[1])*(x-a[0])
     d1, d2, d3 = s(t[0], t[1]), s(t[1], t[2]), s(t[2], t[0])
-    neg = d1 < 0 or d2 < 0 or d3 < 0
-    pos = d1 > 0 or d2 > 0 or d3 > 0
-    return not (neg and pos)
+    return not ((d1 < 0 or d2 < 0 or d3 < 0) and (d1 > 0 or d2 > 0 or d3 > 0))
 
-outer = tri(256, 70, 420, 205)
-hole = tri(256, 150, 382, 135)
-inner = tri(256, 228, 352, 62)
+play = [(214, 176), (346, 256), (214, 336)]
+
+def shape(p):
+    ring = in_rrect(p, 76, 96, 436, 416, 64) and not in_rrect(p, 108, 128, 404, 384, 34)
+    stand = in_rrect(p, 196, 430, 316, 448, 9)
+    return ring or stand or in_tri(p, play)
 
 rows = []
 for y in range(H):
@@ -34,7 +40,7 @@ for y in range(H):
         for sy in range(SS):
             for sx in range(SS):
                 p = (x + (sx + 0.5) / SS, y + (sy + 0.5) / SS)
-                if (inside(p, outer) and not inside(p, hole)) or inside(p, inner):
+                if shape(p):
                     cov += 1
         a = cov / (SS * SS)
         t = min(1.0, max(0.0, (x + y - 140) / 620))

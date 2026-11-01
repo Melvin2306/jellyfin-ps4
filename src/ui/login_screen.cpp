@@ -361,7 +361,7 @@ void LoginScreen::draw_users(Renderer &r) {
 }
 
 void LoginScreen::draw(Renderer &r) {
-	r.text(fonts_.page_header, "Jellyfin", LEFT, 150, theme::PRIMARY);
+	r.text(fonts_.page_header, "Jellyfin for PS4", LEFT, 150, theme::PRIMARY);
 	std::string sub = "Connect to your Jellyfin server";
 	if (step_ != SERVER && !server_.url.empty()) {
 		sub = "Connected to " + (server_.name.empty() ? std::string("Jellyfin") : server_.name) +
