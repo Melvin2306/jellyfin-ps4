@@ -21,6 +21,26 @@ std::string lower(std::string s) {
 	return s;
 }
 
+// The remembered language for a key, preferring a per-series override when
+// the item is an episode of a series.
+std::string pref_lang(const jf::Item &item, const char *key) {
+	const std::string uid = jf::client().user_id();
+	if (item.type == "Episode" && !item.series_id.empty()) {
+		const std::string series_key = "series_" + item.series_id + "_" + key;
+		const std::string v = settings::user_string(uid, series_key, "\x01");
+		if (v != "\x01") return v; // a per-series choice exists (may be "" or "off")
+	}
+	return settings::user_string(uid, key);
+}
+
+void remember_lang(const jf::Item &item, const char *key, const std::string &value) {
+	const std::string uid = jf::client().user_id();
+	settings::set_user(uid, key, value); // global default
+	if (item.type == "Episode" && !item.series_id.empty()) {
+		settings::set_user(uid, "series_" + item.series_id + "_" + key, value); // per-series
+	}
+}
+
 bool image_codec(const std::string &codec) {
 	const std::string c = lower(codec);
 	return c == "pgssub" || c == "hdmv_pgs_subtitle" || c == "dvdsub" || c == "dvd_subtitle" || c == "vobsub" || c == "pgs";
@@ -36,7 +56,7 @@ bool subtitle_supported(const jf::Stream &s, bool transcode) {
 int default_audio(const jf::Item &item) {
 	const std::vector<jf::Stream> audio = item.audio_streams();
 	if (audio.empty()) return -1;
-	const std::string lang = settings::user_string(jf::client().user_id(), "audio_language");
+	const std::string lang = pref_lang(item, "audio_language");
 	if (!lang.empty()) {
 		for (const jf::Stream &s : audio)
 			if (lower(s.language) == lower(lang)) return s.index;
@@ -47,7 +67,7 @@ int default_audio(const jf::Item &item) {
 }
 
 int default_subtitle(const jf::Item &item, bool transcode) {
-	const std::string lang = settings::user_string(jf::client().user_id(), "subtitle_language");
+	const std::string lang = pref_lang(item, "subtitle_language");
 	const std::vector<jf::Stream> subs = item.subtitle_streams();
 	if (lang == "off") return -1;
 	if (!lang.empty()) {
@@ -69,13 +89,16 @@ int default_subtitle(const jf::Item &item, bool transcode) {
 
 void remember_audio(const jf::Item &item, int index) {
 	const jf::Stream *s = item.stream(index);
-	if (s && !s->language.empty()) settings::set_user(jf::client().user_id(), "audio_language", s->language);
+	if (s && !s->language.empty()) remember_lang(item, "audio_language", s->language);
 }
 
 void remember_subtitle(const jf::Item &item, int index) {
+	if (index < 0) {
+		remember_lang(item, "subtitle_language", "off");
+		return;
+	}
 	const jf::Stream *s = item.stream(index);
-	if (index < 0) settings::set_user(jf::client().user_id(), "subtitle_language", "off");
-	else if (s && !s->language.empty()) settings::set_user(jf::client().user_id(), "subtitle_language", s->language);
+	if (s && !s->language.empty()) remember_lang(item, "subtitle_language", s->language);
 }
 
 std::string audio_label(const jf::Item &item, int index) {
