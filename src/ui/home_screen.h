@@ -20,7 +20,7 @@ public:
 	void draw(Renderer &r) override;
 
 private:
-	enum Section { SEARCH, RESUME, NEXT_UP, FAVORITES, MOVIES, SHOWS, COLLECTIONS, GENRES, SETTINGS, SIGN_OUT, SECTIONS };
+	enum Section { SEARCH, RESUME, NEXT_UP, FAVORITES, MOVIES, SHOWS, COLLECTIONS, GENRES, SETTINGS, SWITCH_USER, SIGN_OUT, SECTIONS };
 	static bool is_list(int s) { return s >= RESUME && s <= GENRES; }
 	static bool sortable(int s) { return s == MOVIES || s == SHOWS; }
 	void load(int section);

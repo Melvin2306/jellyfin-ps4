@@ -201,13 +201,41 @@ void Client::init() {
 		user_name_ = j["user_name"].as_string("");
 		token_ = j["token"].as_string("");
 		device_id_ = j["device_id"].as_string("");
+		const Json &list = j["sessions"];
+		for (size_t i = 0; i < list.size(); i++) {
+			Session s;
+			s.server = list[i]["server"].as_string("");
+			s.user_id = list[i]["user_id"].as_string("");
+			s.user_name = list[i]["user_name"].as_string("");
+			s.token = list[i]["token"].as_string("");
+			if (!s.server.empty() && !s.user_id.empty() && !s.token.empty()) sessions_.push_back(s);
+		}
+		// Files from 1.0 - 1.5 have only the current session.
+		if (!token_.empty() && !user_id_.empty()) store_session();
 	}
-	if (device_id_.empty()) {
-		device_id_ = "ps4-" + random_hex(16);
-		save();
+	if (device_id_.empty()) device_id_ = "ps4-" + random_hex(16);
+	save();
+	platform::log("jellyfin: session %s, %d saved session(s)", token_.empty() ? "none" : "loaded", (int)sessions_.size());
+}
+
+void Client::store_session() {
+	for (Session &s : sessions_) {
+		if (s.server == server_ && s.user_id == user_id_) {
+			s.user_name = user_name_;
+			s.token = token_;
+			return;
+		}
 	}
-	platform::log("jellyfin: session %s, server %s, user %s", token_.empty() ? "none" : "loaded", server_.c_str(),
-			user_name_.c_str());
+	sessions_.push_back({ server_, user_id_, user_name_, token_ });
+}
+
+void Client::drop_session(const std::string &user_id) {
+	for (size_t i = 0; i < sessions_.size(); i++) {
+		if (sessions_[i].server == server_ && sessions_[i].user_id == user_id) {
+			sessions_.erase(sessions_.begin() + (long)i);
+			return;
+		}
+	}
 }
 
 void Client::save() {
@@ -217,7 +245,90 @@ void Client::save() {
 	j.set("user_name", user_name_);
 	j.set("token", token_);
 	j.set("device_id", device_id_);
+	Json list = Json::array();
+	for (const Session &s : sessions_) {
+		Json e = Json::object();
+		e.set("server", s.server);
+		e.set("user_id", s.user_id);
+		e.set("user_name", s.user_name);
+		e.set("token", s.token);
+		list.push(e);
+	}
+	j.set("sessions", list);
 	if (!platform::write_file(platform::data_dir() + SESSION_FILE, j.dump())) platform::log("jellyfin: couldn't save session");
+}
+
+std::vector<UserEntry> Client::saved_users() const {
+	std::vector<UserEntry> out;
+	for (const Session &s : sessions_) {
+		if (s.server != server_) continue;
+		UserEntry u;
+		u.id = s.user_id;
+		u.name = s.user_name;
+		u.signed_in = true;
+		out.push_back(u);
+	}
+	return out;
+}
+
+bool Client::switch_to(const std::string &user_id) {
+	for (const Session &s : sessions_) {
+		if (s.server == server_ && s.user_id == user_id) {
+			user_id_ = s.user_id;
+			user_name_ = s.user_name;
+			token_ = s.token;
+			save();
+			platform::log("jellyfin: switched user");
+			auth_rev++;
+			return true;
+		}
+	}
+	return false;
+}
+
+void Client::leave() {
+	token_.clear();
+	user_id_.clear();
+	save();
+	auth_rev++;
+}
+
+void Client::public_users(UsersCallback done) {
+	http::Request req;
+	req.url = url("/Users/Public");
+	req.headers = { "Authorization: " + auth_value() };
+	http::send(req, [this, done](http::Response &res) {
+		std::vector<UserEntry> users = saved_users();
+		if (res.ok()) {
+			const Json list = Json::parse(res.body);
+			for (size_t i = 0; i < list.size(); i++) {
+				UserEntry u;
+				u.id = list[i]["Id"].as_string("");
+				u.name = list[i]["Name"].as_string("");
+				u.image_tag = list[i]["PrimaryImageTag"].as_string("");
+				u.has_password = list[i]["HasPassword"].as_bool(true);
+				if (u.id.empty()) continue;
+				bool merged = false;
+				for (UserEntry &e : users) {
+					if (e.id == u.id) {
+						e.name = u.name;
+						e.image_tag = u.image_tag;
+						e.has_password = u.has_password;
+						merged = true;
+					}
+				}
+				if (!merged) users.push_back(u);
+			}
+		}
+		platform::log("jellyfin: %d user(s) to pick from (public list HTTP %d)", (int)users.size(), res.status);
+		done(res.ok(), users);
+	});
+}
+
+std::string Client::user_image_url(const UserEntry &user, int size) const {
+	if (user.image_tag.empty()) return "";
+	return url("/UserImage?userId=" + user.id + "&tag=" + user.image_tag + "&format=Jpg&fillHeight=" + std::to_string(size) +
+			"&fillWidth=" + std::to_string(size) + "&quality=85");
 }
 
 std::string Client::auth_value() const {
@@ -244,6 +355,7 @@ std::string Client::take_notice() {
 void Client::unauthorized() {
 	if (token_.empty()) return;
 	platform::log("jellyfin: saved session rejected (HTTP 401); back to sign-in");
+	drop_session(user_id_);
 	token_.clear();
 	user_id_.clear();
 	save(); // server URL and username stay remembered
@@ -296,6 +408,7 @@ void Client::finish_auth(const Json &j, const std::string &fallback_user) {
 	user_id_ = j["User"]["Id"].as_string("");
 	user_name_ = j["User"]["Name"].as_string(fallback_user);
 	platform::log("jellyfin: signed in");
+	store_session();
 	save();
 	auth_rev++;
 }
@@ -410,6 +523,7 @@ void Client::quick_connect_cancel() {
 
 void Client::logout() {
 	if (!token_.empty()) post_json("/Sessions/Logout", Json::object());
+	drop_session(user_id_);
 	token_.clear();
 	user_id_.clear();
 	save(); // server and username stay remembered

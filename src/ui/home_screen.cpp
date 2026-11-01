@@ -10,8 +10,8 @@
 
 namespace {
 const char *NAMES[] = { "Search", "Continue Watching", "Next Up", "Favorites", "Movies", "TV Shows", "Collections", "Genres",
-	"Settings", "Sign out" };
-const float SIDE_X = 70, SIDE_W = 330, SIDE_TOP = 190, SIDE_ROW = 74;
+	"Settings", "Switch user", "Sign out" };
+const float SIDE_X = 70, SIDE_W = 330, SIDE_TOP = 190, SIDE_ROW = 70;
 const float GRID_X = 470, GRID_TOP = 150, VIEW_TOP = 130, VIEW_BOTTOM = 1000;
 } // namespace
 
@@ -73,6 +73,8 @@ void HomeScreen::update(double dt, uint32_t pressed) {
 				if (pressed & platform::BUTTON_ACCEPT) nav_.push(std::unique_ptr<Screen>(new SearchScreen(fonts_, nav_)));
 			} else if (section_ == SETTINGS) {
 				if (pressed & platform::BUTTON_ACCEPT) nav_.push(std::unique_ptr<Screen>(new SettingsScreen(fonts_, nav_)));
+			} else if (section_ == SWITCH_USER) {
+				if (pressed & platform::BUTTON_ACCEPT) jf::client().leave(); // the app shows the user picker
 			} else if (!grid.items().empty()) {
 				in_grid_ = true;
 			} else if ((pressed & platform::BUTTON_ACCEPT) && !loading_[section_]) {
@@ -132,9 +134,11 @@ void HomeScreen::draw(Renderer &r) {
 		r.text(fonts_.body, "Press \xC3\x97 to search movies, shows and episodes.", GRID_X, 200, theme::BASE_CONTENT_MUTED);
 	} else if (section_ == SETTINGS) {
 		r.text(fonts_.body, "Press Ã (or OPTIONS anywhere on Home) for playback, subtitle and audio settings.", GRID_X, 200, theme::BASE_CONTENT_MUTED);
+	} else if (section_ == SWITCH_USER) {
+		r.text(fonts_.body, "Press Ã to pick another user. You stay signed in, so switching back needs no password.", GRID_X, 200, theme::BASE_CONTENT_MUTED);
 	} else if (section_ == SIGN_OUT) {
 		r.text(fonts_.body, "Press \xC3\x97 to sign out of " + jf::client().server(), GRID_X, 200, theme::BASE_CONTENT_MUTED);
-		r.text(fonts_.small, "Your server address and username stay remembered.", GRID_X, 245, theme::BASE_CONTENT_MUTED);
+		r.text(fonts_.small, "This removes this user's saved session from the PS4. The server address and username stay remembered.", GRID_X, 245, theme::BASE_CONTENT_MUTED);
 	}
 
 	// Sidebar.
@@ -142,7 +146,7 @@ void HomeScreen::draw(Renderer &r) {
 	r.text(fonts_.page_header, "Jellyfin", SIDE_X, 110, theme::PRIMARY);
 	r.text(fonts_.small, jf::client().user_name(), SIDE_X, 155, theme::BASE_CONTENT_MUTED);
 	for (int i = 0; i < SECTIONS; i++) {
-		const float y = SIDE_TOP + i * SIDE_ROW + (i == SIGN_OUT ? 24 : 0);
+		const float y = SIDE_TOP + i * SIDE_ROW + (i >= SETTINGS ? 24 : 0);
 		const float h = SIDE_ROW - 12;
 		const bool cur = i == section_;
 		ui::begin_focus(r, SIDE_X - 16, y, SIDE_W, h, theme::radius_field(), side_focus_[i], 1.03f);

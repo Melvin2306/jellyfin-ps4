@@ -4,6 +4,7 @@
 
 #include "../render/renderer.h"
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -13,7 +14,8 @@ enum class State { LOADING, READY, FAILED };
 
 // Returns the texture for `url` if it's ready; otherwise starts loading it
 // (once) and returns an invalid texture. Call every frame for visible items.
-const Texture &get(const std::string &url, State *state = nullptr);
+// `max_bytes` (0 = default 16 MB): larger downloads fail, e.g. unscaled user avatars.
+const Texture &get(const std::string &url, State *state = nullptr, size_t max_bytes = 0);
 
 // First ready texture among `urls` (artwork fallbacks, best first); keeps
 // loading the next candidate while earlier ones fail.

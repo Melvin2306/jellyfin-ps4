@@ -11,7 +11,10 @@ This is an unofficial third-party client. It is not affiliated with the Jellyfin
 ## Features
 
 - **Sign-in**
+  - Servers on the local network are found automatically (Jellyfin's UDP discovery on port 7359). Servers in Docker with bridge networking usually can't answer it; enter the address manually then.
   - Server address entered with the PS4 system keyboard and checked before sign-in (shows the server's name and version).
+  - "Who's watching?" picker with the server's public users and their avatars, plus "Other user".
+  - Several users can stay signed in; "Switch user" on Home changes between them without passwords.
   - **Quick Connect** (approve a code from the Jellyfin web UI or app), or username and password.
   - The server address and username are remembered. The password is never stored; only the access token the server issues is saved.
   - If the server revokes the token, the app returns to sign-in with the server and username filled in.

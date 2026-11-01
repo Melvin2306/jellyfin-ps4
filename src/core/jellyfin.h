@@ -84,6 +84,12 @@ struct ServerInfo {
 	std::string name, version;
 	bool quick_connect = false;
 };
+struct UserEntry {
+	std::string id, name, image_tag;
+	bool has_password = true;
+	bool signed_in = false; // a saved session (token) exists on this console
+};
+using UsersCallback = std::function<void(bool ok, const std::vector<UserEntry> &users)>;
 using ServerCallback = std::function<void(bool ok, const std::string &error, const ServerInfo &info)>;
 using CodeCallback = std::function<void(bool ok, const std::string &error, const std::string &code)>;
 // state: 0 waiting, 1 signed in, -1 failed (error set)
@@ -119,7 +125,19 @@ public:
 	void quick_connect_poll(QuickPollCallback done);
 	void quick_connect_cancel();
 
+	// Signs the current user out (revokes the token on the server).
 	void logout();
+	// Leaves the current user without signing out (Switch user): the token
+	// stays saved, so picking the user again needs no password.
+	void leave();
+	// Users with a saved session on the current server.
+	std::vector<UserEntry> saved_users() const;
+	// Resumes a saved session. False if there is none for that user.
+	bool switch_to(const std::string &user_id);
+	// /Users/Public (users shown on the server's login screen), merged with
+	// this console's saved sessions.
+	void public_users(UsersCallback done);
+	std::string user_image_url(const UserEntry &user, int size) const;
 
 	void movies(ItemsCallback done);
 	void series(ItemsCallback done);
@@ -169,13 +187,19 @@ private:
 	std::string url(const std::string &path) const;
 	void get_items(const std::string &path, ItemsCallback done);
 	void post_json(const std::string &path, const Json &body);
+	struct Session {
+		std::string server, user_id, user_name, token;
+	};
 	void save();
+	void store_session();
+	void drop_session(const std::string &user_id);
 	void finish_auth(const Json &result, const std::string &fallback_user);
 	// A request with the saved token got 401: the token expired or was revoked.
 	void unauthorized();
 
 	std::string server_, user_id_, user_name_, token_, device_id_;
 	std::string notice_;
+	std::vector<Session> sessions_;
 	std::string qc_secret_;
 	int qc_generation_ = 0;
 };

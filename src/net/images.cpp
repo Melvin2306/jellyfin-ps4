@@ -108,11 +108,11 @@ bool decode_webp(const std::string &data, Decoded &out) {
 	return ok;
 }
 
-void start(const std::string &url) {
+void start(const std::string &url, size_t max_bytes) {
 	g_entries[url].last_used = g_frame;
 	http::Request request;
 	request.url = url;
-	request.max_body = MAX_FILE;
+	request.max_body = max_bytes > 0 && max_bytes < MAX_FILE ? max_bytes : MAX_FILE;
 	http::send(
 			request,
 			[url](http::Response &res) {
@@ -152,14 +152,14 @@ void start(const std::string &url) {
 
 } // namespace
 
-const Texture &get(const std::string &url, State *state) {
+const Texture &get(const std::string &url, State *state, size_t max_bytes) {
 	if (url.empty()) {
 		if (state) *state = State::FAILED;
 		return INVALID;
 	}
 	auto it = g_entries.find(url);
 	if (it == g_entries.end()) {
-		start(url);
+		start(url, max_bytes);
 		if (state) *state = State::LOADING;
 		return INVALID;
 	}
