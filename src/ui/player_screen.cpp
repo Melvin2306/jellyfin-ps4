@@ -1,5 +1,7 @@
 #include "player_screen.h"
 
+#include "../core/settings.h"
+#include "../core/tracks.h"
 #include "../platform/platform.h"
 #include "theme.h"
 
@@ -35,6 +37,9 @@ const char *state_name(VideoPlayer::State s) {
 } // namespace
 
 PlayerScreen::PlayerScreen(Fonts &fonts, Navigator &nav, const Args &args) : fonts_(fonts), nav_(nav), args_(args) {
+	audio_ = args.audio != -2 ? args.audio : tracks::default_audio(args.item);
+	subtitle_ = args.subtitle != -2 ? args.subtitle : tracks::default_subtitle(args.item, args.transcode);
+	platform::log("player: tracks audio %d, subtitle %d", audio_, subtitle_);
 	start(args.transcode, args.start);
 }
 
@@ -51,10 +56,11 @@ void PlayerScreen::start(bool transcode, double at) {
 	last_state_ = VideoPlayer::IDLE;
 	error_.clear();
 	last_position_ = at;
+	tracks_applied_ = false;
 	std::weak_ptr<int> alive = alive_;
 	platform::log("player: start '%s' (%s) %s at %.0f s", args_.item.name.c_str(), args_.item.id.c_str(),
 			transcode ? "transcode" : "direct", at);
-	jf::client().play_plan(args_.item, transcode, at, [this, alive, transcode, at](bool ok, const std::string &error,
+	jf::client().play_plan(args_.item, transcode, at, transcode ? audio_ : -1, [this, alive, transcode, at](bool ok, const std::string &error,
 			const jf::PlayPlan &plan) {
 		if (alive.expired()) return;
 		if (!ok) {
@@ -66,6 +72,85 @@ void PlayerScreen::start(bool transcode, double at) {
 		player_ = VideoPlayer::create();
 		// Direct play seeks inside the file; a transcode starts at `at` already.
 		player_->open(plan_.url, plan_.headers, transcode ? 0 : at);
+	});
+}
+
+// FFmpeg's stream id for a Jellyfin stream index. For embedded streams they
+// are the same (Jellyfin reports the file's ffprobe indexes); otherwise
+// match by order among the streams of that kind.
+int PlayerScreen::ffmpeg_track(int index, bool audio) const {
+	if (!player_ || index < 0) return -1;
+	const std::vector<VideoPlayer::Track> ts = audio ? player_->audio_tracks() : player_->subtitle_tracks();
+	for (const VideoPlayer::Track &t : ts)
+		if (t.id == index) return index;
+	int ordinal = 0;
+	for (const jf::Stream &s : args_.item.streams) {
+		if (s.is_external || s.type != (audio ? "Audio" : "Subtitle")) continue;
+		if (s.index == index) return ordinal < (int)ts.size() ? ts[ordinal].id : -1;
+		ordinal++;
+	}
+	return -1;
+}
+
+void PlayerScreen::apply_tracks() {
+	tracks_applied_ = true;
+	if (!transcode_ && audio_ >= 0) {
+		const int id = ffmpeg_track(audio_, true);
+		if (id >= 0 && id != player_->audio_track()) {
+			platform::log("player: audio track %d (ffmpeg %d)", audio_, id);
+			player_->set_audio_track(id);
+		}
+	}
+	apply_subtitle();
+}
+
+void PlayerScreen::apply_subtitle() {
+	ext_generation_++;
+	ext_cues_.clear();
+	ext_active_ = false;
+	ext_loading_ = false;
+	if (!player_) return;
+	const jf::Stream *s = subtitle_ >= 0 ? args_.item.stream(subtitle_) : nullptr;
+	if (!s) {
+		player_->set_subtitle_track(-1);
+		return;
+	}
+	if (!transcode_ && !s->is_external) {
+		const int id = ffmpeg_track(subtitle_, false);
+		platform::log("player: embedded subtitle %d (ffmpeg %d, %s)", subtitle_, id, s->codec.c_str());
+		if (id >= 0) {
+			player_->set_subtitle_track(id);
+			return;
+		}
+		if (!s->is_text) {
+			toast_.show("This subtitle can't be shown", true);
+			return;
+		}
+	}
+	player_->set_subtitle_track(-1);
+	if (!s->is_text) {
+		toast_.show("Image subtitles need direct play", true);
+		return;
+	}
+	// External file, or text subtitles while transcoding: the server's SRT.
+	ext_active_ = true;
+	ext_loading_ = true;
+	const int gen = ext_generation_;
+	std::weak_ptr<int> alive = alive_;
+	const std::string url = jf::client().subtitle_url(args_.item, plan_.media_source_id, subtitle_);
+	platform::log("player: fetching subtitle %d as SRT", subtitle_);
+	jf::client().get_text(url, [this, alive, gen](bool ok, const std::string &body) {
+		if (alive.expired() || gen != ext_generation_) return;
+		ext_loading_ = false;
+		std::vector<SubtitleCue> cues;
+		if (!ok || !parse_subtitles(body, cues)) {
+			platform::log("player: subtitle download/parse failed (%d bytes)", (int)body.size());
+			toast_.show("Couldn't load the subtitles", true);
+			ext_active_ = false;
+			return;
+		}
+		platform::log("player: %d subtitle cues", (int)cues.size());
+		ext_cues_ = std::move(cues);
 	});
 }
 
@@ -109,6 +194,29 @@ void PlayerScreen::update(double dt, uint32_t pressed) {
 	}
 	const double pos = position();
 	if (state == VideoPlayer::PLAYING || state == VideoPlayer::PAUSED) last_position_ = pos;
+
+	if ((state == VideoPlayer::PLAYING || state == VideoPlayer::PAUSED) && !tracks_applied_) apply_tracks();
+
+	if (menu_.visible()) {
+		const TrackMenu::Result res = menu_.update(dt, pressed);
+		if (res == TrackMenu::AUDIO_CHANGED) {
+			audio_ = menu_.audio();
+			if (transcode_) {
+				// The server picks the audio of a transcode: restart it here.
+				start(true, pos);
+				return;
+			}
+			const int id = ffmpeg_track(audio_, true);
+			if (id >= 0) player_->set_audio_track(id);
+		} else if (res == TrackMenu::SUBTITLE_CHANGED) {
+			subtitle_ = menu_.subtitle();
+			apply_subtitle();
+		}
+		pressed = 0; // the menu has the controller
+	} else if ((pressed & platform::BUTTON_TRIANGLE) && player_ && have_plan_) {
+		menu_.open(args_.item, transcode_, audio_, subtitle_, 1);
+		pressed = 0;
+	}
 
 	if (state == VideoPlayer::PLAYING) {
 		ever_played_ = true;
@@ -205,6 +313,7 @@ void PlayerScreen::draw(Renderer &r) {
 				vw = 1080 * aspect;
 			}
 			r.image_stretch(frame, (1920 - vw) / 2, (1080 - vh) / 2, vw, vh);
+			draw_subtitles(r, (1920 - vw) / 2, (1080 - vh) / 2, vw, vh);
 		}
 	}
 	// Centre status while nothing is playing.
@@ -235,10 +344,45 @@ void PlayerScreen::draw(Renderer &r) {
 		r.text(fonts_.body, times, 100, 1000, theme::BASE_CONTENT);
 		ui::hints(r, fonts_.small,
 				{ { "\xC3\x97", state == VideoPlayer::PAUSED ? "Play" : "Pause" }, { "\xE2\x97\x80 \xE2\x96\xB6", "10 s" },
-						{ "L1 R1", "1 min" }, { "\xE2\x97\x8B", "Stop" } },
-				1920 - 100 - ui::hints_width(fonts_.small, { { "\xC3\x97", "Pause" }, { "\xE2\x97\x80 \xE2\x96\xB6", "10 s" }, { "L1 R1", "1 min" }, { "\xE2\x97\x8B", "Stop" } }),
+						{ "L1 R1", "1 min" }, { "\xE2\x96\xB3", "Audio & subtitles" }, { "\xE2\x97\x8B", "Stop" } },
+				1920 - 100 - ui::hints_width(fonts_.small, { { "\xC3\x97", "Pause" }, { "\xE2\x97\x80 \xE2\x96\xB6", "10 s" }, { "L1 R1", "1 min" }, { "\xE2\x96\xB3", "Audio & subtitles" }, { "\xE2\x97\x8B", "Stop" } }),
 				1000);
 		r.pop();
 	}
+	menu_.draw(r, fonts_);
 	if (toast_.visible()) toast_.draw(r, fonts_.body, 960, 60);
+}
+
+void PlayerScreen::draw_subtitles(Renderer &r, float vx, float vy, float vw, float vh) {
+	if (!player_) return;
+	std::string text;
+	VideoPlayer::Subtitle sub;
+	if (ext_active_) {
+		if (const SubtitleCue *cue = cue_at(ext_cues_, position())) text = cue->text;
+	} else if (subtitle_ >= 0 && player_->current_subtitle(sub)) {
+		if (sub.image) {
+			r.image_stretch(*sub.image, vx + sub.x * vw, vy + sub.y * vh, sub.w * vw, sub.h * vh);
+			return;
+		}
+		text = sub.text;
+	}
+	if (text.empty()) return;
+	// Size (percent) and distance from the bottom (pixels) from the settings.
+	const float scale = (float)settings::get_int("subtitle_size", 100) / 100.0f;
+	const float margin = (float)settings::get_int("subtitle_margin", 70);
+	Font &f = fonts_.subtitle;
+	const float line_h = theme::SIZE_SUBTITLE * 1.3f * scale;
+	const std::vector<std::string> lines = f.wrap(text, std::min(vw, 1920.0f) * 0.8f / scale);
+	float bottom = std::min(vy + vh, 1080.0f) - margin;
+	if (overlay_ > 0.5f) bottom = std::min(bottom, 1080.0f - 230);
+	float baseline = bottom - (lines.size() - 1) * line_h;
+	for (const std::string &line : lines) {
+		const float w = f.measure(line);
+		r.push(960, baseline, scale, 1.0f);
+		const float x = 960 - w / 2;
+		r.rounded_rect(x - 14, baseline - theme::SIZE_SUBTITLE * 0.95f, w + 28, theme::SIZE_SUBTITLE * 1.3f, 8, rgb(0x000000, 0.6f));
+		r.text(f, line, x, baseline, rgb(0xFFFFFF));
+		r.pop();
+		baseline += line_h;
+	}
 }

@@ -1,5 +1,6 @@
 #include "detail_screen.h"
 
+#include "../core/tracks.h"
 #include "../net/images.h"
 #include "../platform/platform.h"
 #include "player_screen.h"
@@ -68,6 +69,19 @@ void DetailScreen::build_buttons() {
 	if (pos > 30) b.push_back({ "Resume from " + clock_text(pos), false, pos });
 	b.push_back({ pos > 30 ? "Play from start" : "Play", false, 0 });
 	b.push_back({ "Play (server transcode)", true, pos > 30 ? pos : 0 });
+	// Tracks: the user's defaults until chosen here.
+	if (audio_ == -2 || !item_.stream(audio_)) audio_ = tracks::default_audio(item_);
+	if (subtitle_ == -2 || (subtitle_ >= 0 && !item_.stream(subtitle_))) subtitle_ = tracks::default_subtitle(item_, false);
+	if (!item_.audio_streams().empty()) {
+		Button a{ "Audio: " + tracks::audio_label(item_, audio_), false, 0 };
+		a.menu = 0;
+		b.push_back(a);
+	}
+	{
+		Button t{ "Subtitles: " + tracks::subtitle_label(item_, subtitle_), false, 0 };
+		t.menu = 1;
+		b.push_back(t);
+	}
 	const bool same = b.size() == buttons_.size();
 	buttons_ = b;
 	if (!same) button_ = 0;
@@ -78,6 +92,15 @@ void DetailScreen::update(double dt, uint32_t pressed) {
 	if (jf::client().library_rev != seen_library_rev_) {
 		seen_library_rev_ = jf::client().library_rev;
 		reload();
+	}
+	if (!series_ && menu_.visible()) {
+		const TrackMenu::Result res = menu_.update(dt, pressed);
+		if (res == TrackMenu::AUDIO_CHANGED || res == TrackMenu::SUBTITLE_CHANGED) {
+			audio_ = menu_.audio();
+			subtitle_ = menu_.subtitle();
+			build_buttons();
+		}
+		return;
 	}
 	if (pressed & platform::BUTTON_BACK) {
 		nav_.pop();
@@ -108,11 +131,19 @@ void DetailScreen::update(double dt, uint32_t pressed) {
 	if (pressed & (platform::BUTTON_RIGHT | platform::BUTTON_DOWN)) button_ = std::min((int)buttons_.size() - 1, button_ + 1);
 	if (pressed & platform::BUTTON_ACCEPT) {
 		const Button &b = buttons_[button_];
+		if (b.menu >= 0) {
+			menu_.open(item_, false, audio_, subtitle_, b.menu);
+			return;
+		}
 		platform::log("detail: play '%s' transcode=%d start=%.0f", item_.name.c_str(), b.transcode, b.start);
 		PlayerScreen::Args args;
 		args.item = item_;
 		args.transcode = b.transcode;
 		args.start = b.start;
+		args.audio = audio_;
+		// A subtitle that needs direct play falls back to off when transcoding.
+		const jf::Stream *sub = item_.stream(subtitle_);
+		args.subtitle = (b.transcode && sub && !tracks::subtitle_supported(*sub, true)) ? -1 : subtitle_;
 		nav_.push(std::unique_ptr<Screen>(new PlayerScreen(fonts_, nav_, args)));
 	}
 }
@@ -185,9 +216,19 @@ void DetailScreen::draw(Renderer &r) {
 		r.text(fonts_.body, line, INFO_X, y, theme::BASE_CONTENT);
 		y += 34;
 	}
-	float bx = INFO_X;
-	const float by = 820, bh = 84;
+	float bx = INFO_X, tx = INFO_X;
+	const float by = 800, bh = 84, ty = 910, th = 64;
 	for (Button &b : buttons_) {
+		if (b.menu >= 0) { // track chips on a second row
+			const std::string label = fonts_.body.ellipsize(b.label, 520);
+			const float bw = fonts_.body.measure(label) + 56;
+			ui::begin_focus(r, tx, ty, bw, th, theme::radius_field(), b.focus, 1.05f);
+			r.rounded_rect(tx, ty, bw, th, theme::radius_field(), theme::BASE_200);
+			r.text(fonts_.body, label, tx + 28, ty + th / 2 + 8, theme::BASE_CONTENT);
+			ui::end_focus(r, tx, ty, bw, th, theme::radius_field(), b.focus);
+			tx += bw + 24;
+			continue;
+		}
 		const float bw = fonts_.card_title.measure(b.label) + 80;
 		ui::begin_focus(r, bx, by, bw, bh, theme::radius_field(), b.focus, 1.06f);
 		const bool primary = &b == &buttons_[0];
@@ -199,5 +240,6 @@ void DetailScreen::draw(Renderer &r) {
 	if (item_.runtime_ticks > 0 && item_.position_ticks > 0) {
 		ui::progress(r, INFO_X, by - 40, 600, 8, (float)item_.position_ticks / (float)item_.runtime_ticks);
 	}
-	ui::hints(r, fonts_.small, { { "\xC3\x97", "Play" }, { "\xE2\x97\x8B", "Back" } }, INFO_X, 1030);
+	ui::hints(r, fonts_.small, { { "\xC3\x97", "Select" }, { "\xE2\x97\x8B", "Back" } }, INFO_X, 1040);
+	menu_.draw(r, fonts_);
 }

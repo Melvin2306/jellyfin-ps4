@@ -95,6 +95,20 @@ Item Item::from_json(const Json &j) {
 		for (size_t i = 0; i < streams.size(); i++) {
 			const Json &s = streams[i];
 			const std::string t = s["Type"].as_string("");
+			if (t == "Audio" || t == "Subtitle") {
+				Stream st;
+				st.index = (int)s["Index"].as_int(-1);
+				st.type = t;
+				st.codec = s["Codec"].as_string("");
+				st.language = s["Language"].as_string("");
+				st.title = s["DisplayTitle"].as_string(s["Title"].as_string(st.codec));
+				st.is_default = s["IsDefault"].as_bool(false);
+				st.is_forced = s["IsForced"].as_bool(false);
+				st.is_external = s["IsExternal"].as_bool(false);
+				st.is_text = s["IsTextSubtitleStream"].as_bool(false);
+				st.channels = (int)s["Channels"].as_int(0);
+				it.streams.push_back(st);
+			}
 			if (t == "Video" && it.video_codec.empty()) {
 				it.video_codec = s["Codec"].as_string("");
 				it.width = (int)s["Width"].as_int(0);
@@ -107,6 +121,26 @@ Item Item::from_json(const Json &j) {
 	}
 	if (it.media_source_id.empty()) it.media_source_id = it.id;
 	return it;
+}
+
+std::vector<Stream> Item::audio_streams() const {
+	std::vector<Stream> out;
+	for (const Stream &s : streams)
+		if (s.type == "Audio") out.push_back(s);
+	return out;
+}
+
+std::vector<Stream> Item::subtitle_streams() const {
+	std::vector<Stream> out;
+	for (const Stream &s : streams)
+		if (s.type == "Subtitle") out.push_back(s);
+	return out;
+}
+
+const Stream *Item::stream(int index) const {
+	for (const Stream &s : streams)
+		if (s.index == index) return &s;
+	return nullptr;
 }
 
 std::string Item::display_name() const {
@@ -430,7 +464,7 @@ std::string Client::image_url(const Item &item, int height) const {
 			"&quality=85&format=Jpg&tag=" + item.image_tag);
 }
 
-void Client::play_plan(const Item &item, bool transcode, double start_seconds, PlanCallback done) {
+void Client::play_plan(const Item &item, bool transcode, double start_seconds, int audio_index, PlanCallback done) {
 	PlayPlan plan;
 	plan.headers = auth_headers();
 	plan.media_source_id = item.media_source_id;
@@ -483,7 +517,7 @@ void Client::play_plan(const Item &item, bool transcode, double start_seconds, P
 	body.set("DeviceProfile", profile);
 	req.body = body.dump();
 	const std::string id = item.id;
-	http::send(req, [this, id, transcode, start_seconds, plan, done](http::Response &res) mutable {
+	http::send(req, [this, id, transcode, start_seconds, audio_index, plan, done](http::Response &res) mutable {
 		if (res.ok()) {
 			Json j = Json::parse(res.body);
 			plan.play_session_id = j["PlaySessionId"].as_string("");
@@ -519,10 +553,30 @@ void Client::play_plan(const Item &item, bool transcode, double start_seconds, P
 					"&StartTimeTicks=%lld",
 					TRANSCODE_AUDIO_BITRATE, TRANSCODE_VIDEO_BITRATE, (long long)(start_seconds * 1e7));
 			plan.url = url("/Videos/" + id + "/stream.ts?static=false&" + q + extra);
+			// Never SubtitleStreamIndex: that would make the server burn subtitles in.
+			if (audio_index >= 0) plan.url += "&AudioStreamIndex=" + std::to_string(audio_index);
 			plan.start_seconds = start_seconds;
 		}
 		platform::log("jellyfin: play %s via %s", id.c_str(), plan.play_method.c_str());
 		done(true, "", plan);
+	});
+}
+
+std::string Client::subtitle_url(const Item &item, const std::string &media_source_id, int index) const {
+	return url("/Videos/" + item.id + "/" + (media_source_id.empty() ? item.id : media_source_id) + "/Subtitles/" +
+			std::to_string(index) + "/Stream.srt");
+}
+
+void Client::get_text(const std::string &u, std::function<void(bool ok, const std::string &body)> done) {
+	http::Request req;
+	req.url = u;
+	req.headers = auth_headers();
+	http::send(req, [this, done](http::Response &res) {
+		if (!res.ok()) {
+			platform::log("jellyfin: GET text failed: %s", describe_failure(res).c_str());
+			if (res.status == 401) unauthorized();
+		}
+		done(res.ok(), res.body);
 	});
 }
 

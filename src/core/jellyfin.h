@@ -16,6 +16,18 @@
 
 namespace jf {
 
+// An audio or subtitle stream of an item's first media source.
+struct Stream {
+	int index = -1;          // Jellyfin MediaStream Index (= the file's stream index when embedded)
+	std::string type;        // "Audio" or "Subtitle"
+	std::string codec;       // e.g. "ac3", "subrip", "ass", "PGSSUB", "dvdsub"
+	std::string language;    // ISO 639-2, may be empty
+	std::string title;       // DisplayTitle from the server
+	bool is_default = false, is_forced = false, is_external = false;
+	bool is_text = false;    // text subtitle (SRT/ASS/VTT/mov_text...)
+	int channels = 0;
+};
+
 struct Item {
 	std::string id, name, type; // type: Movie, Series, Episode, Season...
 	std::string overview, series_name, series_id, container;
@@ -28,6 +40,11 @@ struct Item {
 	std::string video_codec, audio_codec;
 	int width = 0, height = 0, audio_channels = 0;
 	int64_t bitrate = 0;
+	std::vector<Stream> streams; // audio + subtitles of the first media source
+
+	std::vector<Stream> audio_streams() const;
+	std::vector<Stream> subtitle_streams() const;
+	const Stream *stream(int index) const;
 
 	static Item from_json(const Json &j);
 	double runtime_seconds() const { return runtime_ticks / 1e7; }
@@ -107,7 +124,16 @@ public:
 	// Direct play: the original file over HTTP (Range requests), decoded on
 	// the PS4 by FFmpeg. Transcode: server-side H.264/AAC in MPEG-TS,
 	// streamed progressively (fallback for files the PS4 can't keep up with).
-	void play_plan(const Item &item, bool transcode, double start_seconds, PlanCallback done);
+	// `audio_index`: Jellyfin stream index for the transcode (-1 = default).
+	void play_plan(const Item &item, bool transcode, double start_seconds, int audio_index, PlanCallback done);
+
+	// Text subtitles as SRT, converted by the server (external files, and
+	// embedded text tracks when transcoding).
+	std::string subtitle_url(const Item &item, const std::string &media_source_id, int index) const;
+	// GET with the session's auth; the body as text.
+	void get_text(const std::string &url, std::function<void(bool ok, const std::string &body)> done);
+
+	const std::string &user_id() const { return user_id_; }
 
 	// Session reporting so "Continue watching" and played state work.
 	void report_start(const Item &item, const PlayPlan &plan, double position);

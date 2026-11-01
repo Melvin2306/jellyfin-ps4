@@ -6,6 +6,7 @@
 #include "../core/jellyfin.h"
 #include "components.h"
 #include "screen.h"
+#include "track_menu.h"
 
 #include <memory>
 #include <string>
@@ -23,6 +24,7 @@ private:
 		bool transcode;
 		double start;
 		float focus = 0;
+		int menu = -1; // >= 0: opens the track menu at this column instead of playing
 	};
 	void build_buttons();
 	void reload();
@@ -33,6 +35,8 @@ private:
 	bool series_ = false;
 	std::vector<Button> buttons_;
 	int button_ = 0;
+	int audio_ = -2, subtitle_ = -2; // chosen tracks (-2 = not chosen yet)
+	TrackMenu menu_;
 	// Series
 	std::vector<jf::Item> episodes_;
 	bool loading_ = false;

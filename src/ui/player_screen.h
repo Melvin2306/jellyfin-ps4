@@ -5,9 +5,11 @@
 #pragma once
 
 #include "../core/jellyfin.h"
+#include "../core/subtitles.h"
 #include "../video/video_player.h"
 #include "components.h"
 #include "screen.h"
+#include "track_menu.h"
 
 #include <memory>
 #include <string>
@@ -18,6 +20,8 @@ public:
 		jf::Item item;
 		bool transcode = false;
 		double start = 0;
+		int audio = -2;    // Jellyfin stream index; -2 = the user's default
+		int subtitle = -2; // -1 = off; -2 = the user's default
 	};
 	PlayerScreen(Fonts &fonts, Navigator &nav, const Args &args);
 	~PlayerScreen() override;
@@ -30,6 +34,11 @@ private:
 	double duration() const;
 	void stop_reporting();
 	void exit();
+	// Tracks: applied once the stream is open (FFmpeg knows its streams).
+	void apply_tracks();
+	void apply_subtitle();
+	int ffmpeg_track(int jellyfin_index, bool audio) const;
+	void draw_subtitles(Renderer &r, float vx, float vy, float vw, float vh);
 
 	Fonts &fonts_;
 	Navigator &nav_;
@@ -51,4 +60,11 @@ private:
 	std::string error_;
 	ui::Toast toast_;
 	double stat_timer_ = 0;
+	// Tracks
+	int audio_ = -1, subtitle_ = -1; // Jellyfin stream indexes
+	bool tracks_applied_ = false;
+	std::vector<SubtitleCue> ext_cues_; // subtitles fetched as SRT
+	int ext_generation_ = 0;
+	bool ext_active_ = false, ext_loading_ = false;
+	TrackMenu menu_;
 };
