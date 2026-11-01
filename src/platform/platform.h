@@ -25,6 +25,8 @@ enum Button : uint32_t {
 	BUTTON_R1 = 1u << 8,     // next tab (keyboard: E / Page Down)
 	BUTTON_TRIANGLE = 1u << 9, // secondary action (keyboard: T)
 	BUTTON_SQUARE = 1u << 10,  // menus such as Discover's filters (keyboard: F)
+	BUTTON_L2 = 1u << 11,
+	BUTTON_R2 = 1u << 12,
 	DIRECTIONS = BUTTON_UP | BUTTON_DOWN | BUTTON_LEFT | BUTTON_RIGHT,
 };
 

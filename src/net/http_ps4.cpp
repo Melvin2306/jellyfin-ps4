@@ -63,7 +63,8 @@ Response perform(const Request &request) {
 	sceHttpSetConnectTimeOut(tpl, 10 * 1000 * 1000);
 	http_set_recv_timeout(tpl, 30 * 1000 * 1000);
 	int conn = sceHttpCreateConnectionWithURL(tpl, request.url.c_str(), 1);
-	int req = conn >= 0 ? sceHttpCreateRequestWithURL(conn, post ? ORBIS_METHOD_POST : ORBIS_METHOD_GET,
+	const int method = post ? ORBIS_METHOD_POST : request.method == "DELETE" ? ORBIS_METHOD_DELETE : ORBIS_METHOD_GET;
+	int req = conn >= 0 ? sceHttpCreateRequestWithURL(conn, method,
 										request.url.c_str(), post ? request.body.size() : 0)
 						: conn;
 	if (req < 0) {

@@ -84,6 +84,9 @@ Item Item::from_json(const Json &j) {
 	const Json &ud = j["UserData"];
 	it.position_ticks = ud["PlaybackPositionTicks"].as_int(0);
 	it.played = ud["Played"].as_bool(false);
+	it.favorite = ud["IsFavorite"].as_bool(false);
+	it.rating = j["CommunityRating"].as_number(0);
+	it.sort_name = j["SortName"].as_string(it.name);
 	it.image_tag = j["ImageTags"]["Primary"].as_string("");
 	const Json &sources = j["MediaSources"];
 	if (sources.is_array() && sources.size() > 0) {
@@ -436,7 +439,7 @@ void Client::get_items(const std::string &path, ItemsCallback done) {
 	});
 }
 
-static const char *LIST_FIELDS = "Fields=Overview,MediaSources,ProductionYear&EnableImageTypes=Primary&ImageTypeLimit=1&EnableUserData=true";
+static const char *LIST_FIELDS = "Fields=Overview,MediaSources,ProductionYear,SortName&EnableImageTypes=Primary&ImageTypeLimit=1&EnableUserData=true";
 
 void Client::movies(ItemsCallback done) {
 	get_items("/Items?userId=" + user_id_ + "&IncludeItemTypes=Movie&Recursive=true&SortBy=SortName&SortOrder=Ascending&Limit=1000&" + LIST_FIELDS, done);
@@ -448,6 +451,48 @@ void Client::series(ItemsCallback done) {
 
 void Client::resume(ItemsCallback done) {
 	get_items("/UserItems/Resume?userId=" + user_id_ + "&MediaTypes=Video&Limit=30&" + LIST_FIELDS, done);
+}
+
+void Client::browse(const std::string &params, ItemsCallback done) {
+	get_items("/Items?userId=" + user_id_ + "&" + params + "&" + LIST_FIELDS, done);
+}
+
+void Client::search(const std::string &term, ItemsCallback done) {
+	browse("searchTerm=" + url_encode(term) + "&IncludeItemTypes=Movie,Series,Episode&Recursive=true&Limit=100", done);
+}
+
+void Client::genres(ItemsCallback done) {
+	get_items("/Genres?userId=" + user_id_ + "&IncludeItemTypes=Movie,Series&SortBy=SortName&EnableImageTypes=Primary&ImageTypeLimit=1", done);
+}
+
+void Client::collections(ItemsCallback done) {
+	browse("IncludeItemTypes=BoxSet&Recursive=true&SortBy=SortName&Limit=500", done);
+}
+
+void Client::favorites(ItemsCallback done) {
+	browse("Filters=IsFavorite&IncludeItemTypes=Movie,Series,Episode&Recursive=true&SortBy=SortName&Limit=500", done);
+}
+
+static void user_data_call(Client &c, const std::string &url, bool add, DoneCallback done, int &library_rev,
+		std::vector<std::string> headers) {
+	http::Request req;
+	req.method = add ? "POST" : "DELETE";
+	req.url = url;
+	req.headers = headers;
+	http::send(req, [done, &library_rev](http::Response &res) {
+		if (!res.ok()) platform::log("jellyfin: user data change failed: HTTP %d %s", res.status, res.error.c_str());
+		else library_rev++;
+		done(res.ok(), res.ok() ? "" : describe_failure(res));
+	});
+	(void)c;
+}
+
+void Client::set_favorite(const std::string &id, bool favorite, DoneCallback done) {
+	user_data_call(*this, url("/UserFavoriteItems/" + id + "?userId=" + user_id_), favorite, done, library_rev, auth_headers());
+}
+
+void Client::set_played(const std::string &id, bool played, DoneCallback done) {
+	user_data_call(*this, url("/UserPlayedItems/" + id + "?userId=" + user_id_), played, done, library_rev, auth_headers());
 }
 
 void Client::next_up(ItemsCallback done) {

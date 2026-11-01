@@ -28,6 +28,7 @@ private:
 	};
 	void build_buttons();
 	void reload();
+	void toggle(bool favorite); // favorite or watched state
 
 	Fonts &fonts_;
 	Navigator &nav_;

@@ -34,7 +34,9 @@ struct Item {
 	int year = 0;
 	int season = -1, episode = -1;
 	int64_t runtime_ticks = 0, position_ticks = 0;
-	bool played = false;
+	bool played = false, favorite = false;
+	double rating = 0;     // CommunityRating
+	std::string sort_name;
 	std::string image_tag; // Primary image tag ("" = none)
 	std::string media_source_id;
 	std::string video_codec, audio_codec;
@@ -123,6 +125,14 @@ public:
 	void series(ItemsCallback done);
 	void resume(ItemsCallback done);
 	void next_up(ItemsCallback done);
+	// Any item query: /Items?userId=..&<params> with the list fields.
+	void browse(const std::string &params, ItemsCallback done);
+	void search(const std::string &term, ItemsCallback done);
+	void genres(ItemsCallback done);
+	void collections(ItemsCallback done);
+	void favorites(ItemsCallback done);
+	void set_favorite(const std::string &id, bool favorite, DoneCallback done);
+	void set_played(const std::string &id, bool played, DoneCallback done);
 	// The episode after `episode` in its series (items empty if it's the last).
 	void next_episode(const Item &episode, ItemsCallback done);
 	// Intro / credits... segments of an item (empty on failure or none).

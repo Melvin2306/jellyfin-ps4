@@ -15,7 +15,10 @@ This is an unofficial third-party client. It is not affiliated with the Jellyfin
   - **Quick Connect** (approve a code from the Jellyfin web UI or app), or username and password.
   - The server address and username are remembered. The password is never stored; only the access token the server issues is saved.
   - If the server revokes the token, the app returns to sign-in with the server and username filled in.
-- **Library**: Continue Watching, Next Up, Movies and TV Shows as poster grids, plus series episode lists.
+- **Library**: Continue Watching, Next Up, Favorites, Movies, TV Shows, Collections and Genres as poster grids, plus series episode lists.
+  - Search with the system keyboard (movies, shows, episodes).
+  - Sort Movies / TV Shows / genre and collection lists by name, year, date added or rating (□); jump by letter with L2 / R2.
+  - Add / remove favorites and mark watched / unwatched from the details screen.
 - **Playback**:
   - Direct play of the original file. Video is decoded on the console by FFmpeg (H.264, HEVC incl. 10-bit, MPEG-4, VP9, AV1; MP4/MKV/TS; AAC, AC3, E-AC3, MP3, FLAC, Opus…), so the server doesn't need to transcode.
   - Optional server transcode (H.264/AAC), used automatically if direct play fails.

@@ -1,11 +1,15 @@
-// Home: a sidebar (Continue Watching, Movies, TV Shows, Sign out) and a
-// poster grid of the selected section.
+// Home: a sidebar of sections (Search, Continue Watching, Next Up,
+// Favorites, Movies, TV Shows, Collections, Genres, Sign out) and the
+// selected section's poster grid. Movies / TV Shows can be sorted (Square)
+// and jumped through by letter (L2 / R2).
 #pragma once
 
 #include "../core/jellyfin.h"
 #include "components.h"
+#include "poster_grid.h"
 #include "screen.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -16,22 +20,20 @@ public:
 	void draw(Renderer &r) override;
 
 private:
-	enum Section { RESUME, NEXT_UP, MOVIES, SHOWS, SIGN_OUT, SECTIONS };
-	static const int LISTS = SIGN_OUT; // sections with an item grid
+	enum Section { SEARCH, RESUME, NEXT_UP, FAVORITES, MOVIES, SHOWS, COLLECTIONS, GENRES, SIGN_OUT, SECTIONS };
+	static bool is_list(int s) { return s >= RESUME && s <= GENRES; }
+	static bool sortable(int s) { return s == MOVIES || s == SHOWS; }
 	void load(int section);
-	void open(const jf::Item &item);
 
 	Fonts &fonts_;
 	Navigator &nav_;
 	int section_ = MOVIES;
 	bool in_grid_ = false;
-	std::vector<jf::Item> items_[LISTS];
-	bool loaded_[LISTS] = {}, loading_[LISTS] = {};
-	std::string error_[LISTS];
-	int selected_[LISTS] = {};
-	float scroll_ = 0;
+	PosterGrid grids_[SECTIONS];
+	bool loaded_[SECTIONS] = {}, loading_[SECTIONS] = {};
+	std::string error_[SECTIONS];
+	int sort_[SECTIONS] = {};
 	float side_focus_[SECTIONS] = {};
-	std::vector<float> card_focus_;
 	int seen_library_rev_ = 0;
 	std::shared_ptr<int> alive_ = std::make_shared<int>(0);
 };

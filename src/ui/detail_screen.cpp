@@ -62,6 +62,24 @@ void DetailScreen::reload() {
 	}
 }
 
+void DetailScreen::toggle(bool favorite) {
+	const bool value = favorite ? !item_.favorite : !item_.played;
+	if (favorite) item_.favorite = value;
+	else item_.played = value;
+	build_buttons();
+	std::weak_ptr<int> alive = alive_;
+	const std::string what = favorite ? "favorite" : "watched";
+	auto done = [this, alive, favorite, value](bool ok, const std::string &) {
+		if (alive.expired() || ok) return;
+		if (favorite) item_.favorite = !value; // undo
+		else item_.played = !value;
+		build_buttons();
+	};
+	platform::log("detail: %s -> %d", what.c_str(), value);
+	if (favorite) jf::client().set_favorite(item_.id, value, done);
+	else jf::client().set_played(item_.id, value, done);
+}
+
 void DetailScreen::build_buttons() {
 	if (series_) return;
 	std::vector<Button> b;
@@ -81,6 +99,14 @@ void DetailScreen::build_buttons() {
 		Button t{ "Subtitles: " + tracks::subtitle_label(item_, subtitle_), false, 0 };
 		t.menu = 1;
 		b.push_back(t);
+	}
+	{
+		Button f{ item_.favorite ? "Remove favorite" : "Add to favorites", false, 0 };
+		f.menu = 2;
+		b.push_back(f);
+		Button w{ item_.played ? "Mark unwatched" : "Mark watched", false, 0 };
+		w.menu = 3;
+		b.push_back(w);
 	}
 	const bool same = b.size() == buttons_.size();
 	buttons_ = b;
@@ -122,6 +148,8 @@ void DetailScreen::update(double dt, uint32_t pressed) {
 		if (pressed & platform::BUTTON_ACCEPT) {
 			nav_.push(std::unique_ptr<Screen>(new DetailScreen(fonts_, nav_, episodes_[episode_])));
 		}
+		if (pressed & platform::BUTTON_TRIANGLE) toggle(true);
+		if (pressed & platform::BUTTON_SQUARE) toggle(false);
 		return;
 	}
 	for (int i = 0; i < (int)buttons_.size(); i++) {
@@ -131,6 +159,10 @@ void DetailScreen::update(double dt, uint32_t pressed) {
 	if (pressed & (platform::BUTTON_RIGHT | platform::BUTTON_DOWN)) button_ = std::min((int)buttons_.size() - 1, button_ + 1);
 	if (pressed & platform::BUTTON_ACCEPT) {
 		const Button &b = buttons_[button_];
+		if (b.menu == 2 || b.menu == 3) {
+			toggle(b.menu == 2);
+			return;
+		}
 		if (b.menu >= 0) {
 			menu_.open(item_, false, audio_, subtitle_, b.menu);
 			return;
@@ -168,8 +200,10 @@ void DetailScreen::draw(Renderer &r) {
 	y += 60;
 	r.text(fonts_.body, fonts_.body.ellipsize(item_.info_line(), INFO_W), INFO_X, y, theme::BASE_CONTENT_MUTED);
 	y += 50;
-	if (item_.played) {
-		ui::badge(r, fonts_.small, "Watched", INFO_X, y - 26, theme::ACCENT, theme::ACCENT_CONTENT);
+	if (item_.played || item_.favorite) {
+		float bx0 = INFO_X;
+		if (item_.played) bx0 += ui::badge(r, fonts_.small, "Watched", bx0, y - 26, theme::ACCENT, theme::ACCENT_CONTENT) + 12;
+		if (item_.favorite) ui::badge(r, fonts_.small, "Favorite", bx0, y - 26, theme::SECONDARY, theme::PRIMARY_CONTENT);
 		y += 40;
 	}
 
@@ -208,7 +242,9 @@ void DetailScreen::draw(Renderer &r) {
 			const std::string pos = std::to_string(episode_ + 1) + " / " + std::to_string(episodes_.size());
 			r.text(fonts_.small, pos, INFO_X + INFO_W - fonts_.small.measure(pos), EP_TOP - 30, theme::BASE_CONTENT_MUTED);
 		}
-		ui::hints(r, fonts_.small, { { "\xC3\x97", "Open" }, { "L1 R1", "Page" }, { "\xE2\x97\x8B", "Back" } }, INFO_X, 1030);
+		ui::hints(r, fonts_.small, { { "\xC3\x97", "Open" }, { "L1 R1", "Page" },
+				{ "\xE2\x96\xB3", item_.favorite ? "Unfavorite" : "Favorite" }, { "\xE2\x96\xA1", item_.played ? "Mark unwatched" : "Mark watched" },
+				{ "\xE2\x97\x8B", "Back" } }, INFO_X, 1030);
 		return;
 	}
 
@@ -220,7 +256,7 @@ void DetailScreen::draw(Renderer &r) {
 	const float by = 800, bh = 84, ty = 910, th = 64;
 	for (Button &b : buttons_) {
 		if (b.menu >= 0) { // track chips on a second row
-			const std::string label = fonts_.body.ellipsize(b.label, 520);
+			const std::string label = fonts_.body.ellipsize(b.label, b.menu <= 1 ? 260 : 300);
 			const float bw = fonts_.body.measure(label) + 56;
 			ui::begin_focus(r, tx, ty, bw, th, theme::radius_field(), b.focus, 1.05f);
 			r.rounded_rect(tx, ty, bw, th, theme::radius_field(), theme::BASE_200);
