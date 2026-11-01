@@ -19,6 +19,8 @@ This is an unofficial third-party client. It is not affiliated with the Jellyfin
   - The server address and username are remembered. The password is never stored; only the access token the server issues is saved.
   - If the server revokes the token, the app returns to sign-in with the server and username filled in.
 - **Library**: Continue Watching, Next Up, Favorites, Movies, TV Shows, Collections and Genres as poster grids, plus series episode lists.
+  - Detail pages show cast & crew (select a person for their filmography) and a "More like this" row.
+  - Autoplay continues to the next movie in a collection, by the order the collection is sorted in.
   - Search with the system keyboard (movies, shows, episodes).
   - Sort Movies / TV Shows / genre and collection lists by name, year, date added or rating (□); jump by letter with L2 / R2.
   - Add / remove favorites and mark watched / unwatched from the details screen.
@@ -26,7 +28,7 @@ This is an unofficial third-party client. It is not affiliated with the Jellyfin
   - Direct play of the original file. Video is decoded on the console by FFmpeg (H.264, HEVC incl. 10-bit, MPEG-4, VP9, AV1; MP4/MKV/TS; AAC, AC3, E-AC3, MP3, FLAC, Opus…), so the server doesn't need to transcode.
   - Optional server transcode (H.264/AAC), used automatically if direct play fails.
   - Resume, and playback progress reported to the server (Continue Watching).
-  - Audio and subtitle selection (details screen, or △ in the player). Embedded text and image (PGS/VobSub) subtitles are rendered in the app in direct play; external subtitles are fetched as SRT. Chosen languages are remembered per user.
+  - Audio and subtitle selection (details screen, or △ in the player). Embedded text and image (PGS/VobSub) subtitles are rendered in the app in direct play; external subtitles are fetched as SRT. Chosen languages are remembered per user, and per series (a TV show's choice overrides the global default for that show).
   - Next episode: a 10-second countdown at the end of an episode (× play now, ○ cancel).
   - Skip intro / recap / credits buttons from the server's media segments.
 - **Settings** (OPTIONS on Home): direct play vs. always transcode, maximum transcode bitrate, default audio / subtitle language, subtitle size and position, autoplay next episode, audio output (Stereo or Multichannel PCM 5.1/7.1).

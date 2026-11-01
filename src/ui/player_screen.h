@@ -22,6 +22,8 @@ public:
 		double start = 0;
 		int audio = -2;    // Jellyfin stream index; -2 = the user's default
 		int subtitle = -2; // -1 = off; -2 = the user's default
+		jf::Item next_item;      // explicit Up Next (e.g. next movie in a collection)
+		bool has_next_item = false;
 	};
 	PlayerScreen(Fonts &fonts, Navigator &nav, const Args &args);
 	~PlayerScreen() override;

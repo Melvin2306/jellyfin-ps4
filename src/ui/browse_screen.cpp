@@ -67,7 +67,19 @@ void BrowseScreen::update(double dt, uint32_t pressed) {
 		grid_.set_letter_jump(sort_ == 0);
 		load();
 	}
-	if (grid_.update(dt, pressed) == PosterGrid::OPEN && grid_.current()) open_item(fonts_, nav_, *grid_.current());
+	if (grid_.update(dt, pressed) == PosterGrid::OPEN && grid_.current()) {
+		const std::vector<jf::Item> &items = grid_.items();
+		const int sel = grid_.selected();
+		const jf::Item &cur = *grid_.current();
+		// In a collection (ParentId=...), the next movie by release order becomes
+		// the player's Up Next.
+		const bool collection = params_.rfind("ParentId=", 0) == 0;
+		if (collection && cur.type == "Movie" && sel + 1 < (int)items.size() && items[sel + 1].type == "Movie") {
+			nav_.push(std::unique_ptr<Screen>(new DetailScreen(fonts_, nav_, cur, &items[sel + 1])));
+		} else {
+			open_item(fonts_, nav_, cur);
+		}
+	}
 }
 
 void BrowseScreen::draw(Renderer &r) {

@@ -614,6 +614,20 @@ void Client::search(const std::string &term, ItemsCallback done) {
 	browse("searchTerm=" + url_encode(term) + "&IncludeItemTypes=Movie,Series,Episode&Recursive=true&Limit=100", done);
 }
 
+void Client::similar(const std::string &item_id, ItemsCallback done) {
+	get_items("/Items/" + item_id + "/Similar?userId=" + user_id_ + "&Limit=20&" + LIST_FIELDS, done);
+}
+
+void Client::person_items(const std::string &person_id, ItemsCallback done) {
+	browse("personIds=" + person_id + "&IncludeItemTypes=Movie,Series,Episode&Recursive=true&SortBy=PremiereDate,SortName&Limit=200", done);
+}
+
+std::string Client::person_image_url(const Person &person, int height) const {
+	if (person.image_tag.empty()) return "";
+	return url("/Items/" + person.id + "/Images/Primary?fillHeight=" + std::to_string(height) + "&quality=85&format=Jpg&tag=" +
+			person.image_tag);
+}
+
 std::string Client::trickplay_tile_url(const Item &item, int tile_index) const {
 	return url("/Videos/" + item.id + "/Trickplay/" + std::to_string(item.trickplay.width) + "/" +
 			std::to_string(tile_index) + ".jpg?mediaSourceId=" + url_encode(item.media_source_id));

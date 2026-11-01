@@ -49,7 +49,11 @@ PlayerScreen::PlayerScreen(Fonts &fonts, Navigator &nav, const Args &args) : fon
 	jf::client().segments(args.item.id, [this, alive](const std::vector<jf::Segment> &segs) {
 		if (!alive.expired()) segments_ = segs;
 	});
-	if (args.item.type == "Episode") {
+	if (args.has_next_item) {
+		next_ = args.next_item;
+		has_next_ = true;
+		platform::log("player: Up Next is %s", next_.display_name().c_str());
+	} else if (args.item.type == "Episode") {
 		jf::client().next_episode(args.item, [this, alive](bool ok, const std::string &, const std::vector<jf::Item> &items) {
 			if (alive.expired() || !ok || items.empty()) return;
 			next_ = items[0];

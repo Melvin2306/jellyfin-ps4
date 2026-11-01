@@ -170,8 +170,11 @@ public:
 	void search(const std::string &term, ItemsCallback done);
 	void genres(ItemsCallback done);
 	void collections(ItemsCallback done);
+	void similar(const std::string &item_id, ItemsCallback done);
+	void person_items(const std::string &person_id, ItemsCallback done);
 	// URL of the trickplay tile image holding thumbnail index `tile_index`.
 	std::string trickplay_tile_url(const Item &item, int tile_index) const;
+	std::string person_image_url(const Person &person, int height) const;
 	void favorites(ItemsCallback done);
 	void set_favorite(const std::string &id, bool favorite, DoneCallback done);
 	void set_played(const std::string &id, bool played, DoneCallback done);
