@@ -64,7 +64,7 @@ This is an unofficial third-party client. It is not affiliated with the Jellyfin
 2. Copy it to `/data/pkg/` on the console, e.g. with GoldHEN's FTP server (port 2121).
 3. On the PS4: Settings → Debug Settings → Game → Package Installer → select the pkg.
    Newer versions install over older ones and keep your sign-in.
-4. Start **Jellyfin for PS4**, enter your server address (e.g. `http://192.168.1.10:8096`) and sign in.
+4. Start **Jellyfin for PS4**, enter your server address (e.g. `http://jellyfin.local:8096`) and sign in.
 
 Files on the console: `/data/jellyfin/session.json` (server, username, access token, device id)
 and `/data/jellyfin/log.txt` (diagnostic log; no passwords or tokens).
