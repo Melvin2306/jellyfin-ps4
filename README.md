@@ -15,11 +15,14 @@ This is an unofficial third-party client. It is not affiliated with the Jellyfin
   - **Quick Connect** (approve a code from the Jellyfin web UI or app), or username and password.
   - The server address and username are remembered. The password is never stored; only the access token the server issues is saved.
   - If the server revokes the token, the app returns to sign-in with the server and username filled in.
-- **Library**: Continue Watching, Movies and TV Shows as poster grids, plus series episode lists.
+- **Library**: Continue Watching, Next Up, Movies and TV Shows as poster grids, plus series episode lists.
 - **Playback**:
   - Direct play of the original file. Video is decoded on the console by FFmpeg (H.264, HEVC incl. 10-bit, MPEG-4, VP9, AV1; MP4/MKV/TS; AAC, AC3, E-AC3, MP3, FLAC, Opus…), so the server doesn't need to transcode.
   - Optional server transcode (H.264/AAC), used automatically if direct play fails.
   - Resume, and playback progress reported to the server (Continue Watching).
+  - Audio and subtitle selection (details screen, or △ in the player). Embedded text and image (PGS/VobSub) subtitles are rendered in the app in direct play; external subtitles are fetched as SRT. Chosen languages are remembered per user.
+  - Next episode: a 10-second countdown at the end of an episode (× play now, ○ cancel).
+  - Skip intro / recap / credits buttons from the server's media segments.
 - **Controls**: D-pad move, × select, ○ back. Player: × pause, ◀ ▶ 10 s, L1 / R1 1 min, ○ stop.
 
 ## Requirements
@@ -27,6 +30,7 @@ This is an unofficial third-party client. It is not affiliated with the Jellyfin
 - A PS4 or PS4 Pro with GoldHEN (Debug Settings enabled for the Package Installer).
 - A Jellyfin server (10.10+ API; tested with a 12.x server) reachable over HTTP on your LAN.
   - **Quick Connect is recommended**: enable it in Dashboard → General → Quick Connect.
+  - **Skip intro / credits** needs media segments on the server, e.g. from the [Intro Skipper](https://github.com/intro-skipper/intro-skipper) plugin. Without segments the button simply doesn't appear.
   - Direct play needs no server CPU. Transcoding is only a fallback and needs a server that can transcode in real time.
 
 ## Install

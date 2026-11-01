@@ -8,7 +8,7 @@
 #include <algorithm>
 
 namespace {
-const char *NAMES[] = { "Continue Watching", "Movies", "TV Shows", "Sign out" };
+const char *NAMES[] = { "Continue Watching", "Next Up", "Movies", "TV Shows", "Sign out" };
 const float SIDE_X = 70, SIDE_W = 330, SIDE_TOP = 230, SIDE_ROW = 84;
 const float GRID_X = 470, GRID_TOP = 150, CARD_W = 200, CARD_H = 300, GAP_X = 34, ROW_H = 400;
 const int COLS = 6;
@@ -17,13 +17,11 @@ const float VIEW_TOP = 130, VIEW_BOTTOM = 1000;
 
 HomeScreen::HomeScreen(Fonts &fonts, Navigator &nav) : fonts_(fonts), nav_(nav) {
 	seen_library_rev_ = jf::client().library_rev;
-	load(RESUME);
-	load(MOVIES);
-	load(SHOWS);
+	for (int i = 0; i < LISTS; i++) load(i);
 }
 
 void HomeScreen::load(int section) {
-	if (section < 0 || section > SHOWS || loading_[section]) return;
+	if (section < 0 || section >= LISTS || loading_[section]) return;
 	loading_[section] = true;
 	std::weak_ptr<int> alive = alive_;
 	auto done = [this, alive, section](bool ok, const std::string &error, const std::vector<jf::Item> &items) {
@@ -38,6 +36,7 @@ void HomeScreen::load(int section) {
 	};
 	jf::Client &c = jf::client();
 	if (section == RESUME) c.resume(done);
+	else if (section == NEXT_UP) c.next_up(done);
 	else if (section == MOVIES) c.movies(done);
 	else c.series(done);
 }
@@ -51,14 +50,12 @@ void HomeScreen::update(double dt, uint32_t pressed) {
 	// Back from the player: positions changed, refresh Continue Watching.
 	if (jf::client().library_rev != seen_library_rev_) {
 		seen_library_rev_ = jf::client().library_rev;
-		load(RESUME);
-		load(MOVIES);
-		load(SHOWS);
+		for (int i = 0; i < LISTS; i++) load(i);
 	}
 	for (int i = 0; i < SECTIONS; i++) {
 		side_focus_[i] = ui::approach(side_focus_[i], (!in_grid_ && i == section_) ? 1.0f : 0.0f, dt);
 	}
-	const bool grid_section = section_ <= SHOWS;
+	const bool grid_section = section_ < LISTS;
 	std::vector<jf::Item> *items = grid_section ? &items_[section_] : nullptr;
 	const int n = items ? (int)items->size() : 0;
 	if ((int)card_focus_.size() != n) card_focus_.assign(n, 0.0f);
@@ -139,7 +136,8 @@ void HomeScreen::draw(Renderer &r) {
 	if (items.empty()) {
 		std::string msg = loading_[section_] ? "Loading\xE2\x80\xA6"
 				: !error_[section_].empty() ? "Couldn't load: " + error_[section_] + " (\xC3\x97 to retry)"
-				: section_ == RESUME ? "Nothing to continue yet." : "Nothing here.";
+				: section_ == RESUME ? "Nothing to continue yet."
+				: section_ == NEXT_UP ? "No next episodes. Start a series to see it here." : "Nothing here.";
 		r.text(fonts_.body, msg, GRID_X, 220, error_[section_].empty() ? theme::BASE_CONTENT_MUTED : theme::ERROR);
 		return;
 	}
@@ -168,7 +166,7 @@ void HomeScreen::draw(Renderer &r) {
 		}
 		if (it.played) ui::status(r, x + CARD_W - 18, y + 18);
 		ui::end_focus(r, x, y, CARD_W, CARD_H, theme::radius_field(), f);
-		const std::string title = section_ == RESUME && it.type == "Episode" ? it.series_name : it.name;
+		const std::string title = (section_ == RESUME || section_ == NEXT_UP) && it.type == "Episode" ? it.series_name : it.name;
 		r.text(fonts_.small, fonts_.small.ellipsize(title, CARD_W + 20), x, y + CARD_H + 34,
 				f > 0.5f ? theme::BASE_CONTENT : theme::BASE_CONTENT_MUTED);
 		if (it.year > 0 || it.type == "Episode") {

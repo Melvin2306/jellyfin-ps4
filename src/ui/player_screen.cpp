@@ -41,6 +41,68 @@ PlayerScreen::PlayerScreen(Fonts &fonts, Navigator &nav, const Args &args) : fon
 	subtitle_ = args.subtitle != -2 ? args.subtitle : tracks::default_subtitle(args.item, args.transcode);
 	platform::log("player: tracks audio %d, subtitle %d", audio_, subtitle_);
 	start(args.transcode, args.start);
+	std::weak_ptr<int> alive = alive_;
+	jf::client().segments(args.item.id, [this, alive](const std::vector<jf::Segment> &segs) {
+		if (!alive.expired()) segments_ = segs;
+	});
+	if (args.item.type == "Episode") {
+		jf::client().next_episode(args.item, [this, alive](bool ok, const std::string &, const std::vector<jf::Item> &items) {
+			if (alive.expired() || !ok || items.empty()) return;
+			next_ = items[0];
+			has_next_ = true;
+			platform::log("player: next episode is %s", next_.display_name().c_str());
+		});
+	}
+}
+
+const jf::Segment *PlayerScreen::current_segment() const {
+	const double pos = position();
+	for (const jf::Segment &s : segments_) {
+		// Not in the last 2 s of a segment (the skip would be pointless).
+		if (pos >= s.start && pos < s.end - 2) return &s;
+	}
+	return nullptr;
+}
+
+void PlayerScreen::skip_segment(const jf::Segment &s) {
+	platform::log("player: skip %s %.0f -> %.0f s", s.type.c_str(), s.start, s.end);
+	const bool credits = s.type == "Outro";
+	// Credits that run to (almost) the end: on to the next episode.
+	if (credits && has_next_ && (duration() <= 0 || s.end >= duration() - 30)) {
+		last_position_ = std::max(last_position_, s.start);
+		begin_countdown();
+		return;
+	}
+	const double target = s.end;
+	if (transcode_) {
+		last_position_ = target;
+		start(true, target);
+	} else if (player_) {
+		player_->seek(target);
+	}
+}
+
+void PlayerScreen::begin_countdown() {
+	const bool autoplay = settings::get_bool("autoplay_next", true);
+	platform::log("player: episode over; next %s, autoplay %d", has_next_ ? "available" : "none", autoplay);
+	if (!has_next_) {
+		exit();
+		return;
+	}
+	if (player_) player_->pause();
+	countdown_ = autoplay ? 10.0 : 1e9; // without autoplay: wait for X
+}
+
+void PlayerScreen::play_next() {
+	platform::log("player: playing next episode");
+	// Mark this one watched: report the stop at the end.
+	if (duration() > 0) last_position_ = duration();
+	stop_reporting();
+	player_.reset();
+	PlayerScreen::Args args;
+	args.item = next_;
+	nav_.pop();
+	nav_.push(std::unique_ptr<Screen>(new PlayerScreen(fonts_, nav_, args)));
 }
 
 PlayerScreen::~PlayerScreen() {
@@ -248,9 +310,24 @@ void PlayerScreen::update(double dt, uint32_t pressed) {
 		start(true, last_position_);
 		return;
 	}
+	if (countdown_ >= 0) {
+		countdown_ -= dt;
+		if ((pressed & platform::BUTTON_ACCEPT) || countdown_ <= 0) {
+			play_next();
+		} else if (pressed & platform::BUTTON_BACK) {
+			countdown_ = -1;
+			if (duration() > 0) last_position_ = duration(); // counts as watched
+			exit();
+		}
+		return;
+	}
 	if (state == VideoPlayer::ENDED) {
 		platform::log("player: ended");
 		last_position_ = duration() > 0 ? duration() : last_position_;
+		if (has_next_) {
+			begin_countdown();
+			return;
+		}
 		exit();
 		return;
 	}
@@ -267,6 +344,12 @@ void PlayerScreen::update(double dt, uint32_t pressed) {
 		return;
 	}
 	if (!player_) return;
+	const jf::Segment *seg = state == VideoPlayer::PLAYING ? current_segment() : nullptr;
+	skip_focus_ = ui::approach(skip_focus_, seg ? 1.0f : 0.0f, dt);
+	if (seg && (pressed & platform::BUTTON_ACCEPT)) {
+		skip_segment(*seg);
+		return;
+	}
 	if ((pressed & platform::BUTTON_ACCEPT) && (state == VideoPlayer::PLAYING || state == VideoPlayer::PAUSED)) {
 		if (state == VideoPlayer::PLAYING) player_->pause();
 		else player_->play();
@@ -349,8 +432,39 @@ void PlayerScreen::draw(Renderer &r) {
 				1000);
 		r.pop();
 	}
+	if (skip_focus_ > 0.01f && countdown_ < 0) {
+		const jf::Segment *seg = current_segment();
+		std::string label = "Skip";
+		if (seg) {
+			if (seg->type == "Intro") label = "Skip intro";
+			else if (seg->type == "Outro") label = has_next_ ? "Next episode" : "Skip credits";
+			else if (seg->type == "Recap") label = "Skip recap";
+			else if (seg->type == "Preview") label = "Skip preview";
+			else if (seg->type == "Commercial") label = "Skip ad";
+		}
+		label = "\xC3\x97  " + label;
+		const float w = fonts_.card_title.measure(label) + 64, h = 76;
+		const float x = 1920 - 100 - w, y = overlay_ > 0.5f ? 760 : 900;
+		r.push(x + w / 2, y + h / 2, 1.0f, skip_focus_);
+		r.rounded_rect(x, y, w, h, theme::radius_field(), theme::PRIMARY);
+		r.text(fonts_.card_title, label, x + 32, y + h / 2 + 9, theme::PRIMARY_CONTENT);
+		r.pop();
+	}
+	if (countdown_ >= 0) draw_countdown(r);
 	menu_.draw(r, fonts_);
 	if (toast_.visible()) toast_.draw(r, fonts_.body, 960, 60);
+}
+
+void PlayerScreen::draw_countdown(Renderer &r) {
+	r.rect(0, 0, 1920, 1080, rgb(0x000000, 0.6f));
+	const float x = 1920 - 100 - 760, y = 600, w = 760, h = 300;
+	r.rounded_rect(x, y, w, h, theme::radius_box(), theme::BASE_200);
+	const std::string head = countdown_ < 1e8 ? "Next episode in " + std::to_string((int)countdown_ + 1) + " s" : "Next episode";
+	r.text(fonts_.section, head, x + 40, y + 70, theme::BASE_CONTENT);
+	r.text(fonts_.body, fonts_.body.ellipsize(next_.display_name(), w - 80), x + 40, y + 130, theme::BASE_CONTENT);
+	if (!next_.series_name.empty()) r.text(fonts_.small, next_.series_name, x + 40, y + 170, theme::BASE_CONTENT_MUTED);
+	if (countdown_ < 1e8) ui::progress(r, x + 40, y + 200, w - 80, 6, 1.0f - (float)(countdown_ / 10.0));
+	ui::hints(r, fonts_.small, { { "\xC3\x97", "Play now" }, { "\xE2\x97\x8B", "Cancel" } }, x + 40, y + 260);
 }
 
 void PlayerScreen::draw_subtitles(Renderer &r, float vx, float vy, float vw, float vh) {

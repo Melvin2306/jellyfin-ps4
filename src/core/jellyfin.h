@@ -55,6 +55,13 @@ struct Item {
 	std::string info_line() const;
 };
 
+// A media segment (needs a server plugin such as Intro Skipper).
+struct Segment {
+	std::string type; // Intro, Outro, Recap, Preview, Commercial
+	double start = 0, end = 0; // seconds
+};
+using SegmentsCallback = std::function<void(const std::vector<Segment> &segments)>;
+
 // How a title is going to be played.
 struct PlayPlan {
 	std::string url;
@@ -115,6 +122,11 @@ public:
 	void movies(ItemsCallback done);
 	void series(ItemsCallback done);
 	void resume(ItemsCallback done);
+	void next_up(ItemsCallback done);
+	// The episode after `episode` in its series (items empty if it's the last).
+	void next_episode(const Item &episode, ItemsCallback done);
+	// Intro / credits... segments of an item (empty on failure or none).
+	void segments(const std::string &item_id, SegmentsCallback done);
 	void episodes(const std::string &series_id, ItemsCallback done);
 	void item(const std::string &id, ItemsCallback done); // one item, full fields
 

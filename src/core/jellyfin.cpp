@@ -450,6 +450,50 @@ void Client::resume(ItemsCallback done) {
 	get_items("/UserItems/Resume?userId=" + user_id_ + "&MediaTypes=Video&Limit=30&" + LIST_FIELDS, done);
 }
 
+void Client::next_up(ItemsCallback done) {
+	get_items("/Shows/NextUp?userId=" + user_id_ + "&Limit=30&EnableResumable=false&" + LIST_FIELDS, done);
+}
+
+void Client::next_episode(const Item &episode, ItemsCallback done) {
+	if (episode.series_id.empty()) {
+		done(true, "", {});
+		return;
+	}
+	const std::string id = episode.id;
+	get_items("/Shows/" + episode.series_id + "/Episodes?userId=" + user_id_ + "&adjacentTo=" + id + "&" + LIST_FIELDS,
+			[id, done](bool ok, const std::string &error, const std::vector<Item> &items) {
+				std::vector<Item> next;
+				for (size_t i = 0; i + 1 < items.size(); i++) {
+					if (items[i].id == id) {
+						next.push_back(items[i + 1]);
+						break;
+					}
+				}
+				done(ok, error, next);
+			});
+}
+
+void Client::segments(const std::string &item_id, SegmentsCallback done) {
+	http::Request req;
+	req.url = url("/MediaSegments/" + item_id);
+	req.headers = auth_headers();
+	http::send(req, [done](http::Response &res) {
+		std::vector<Segment> out;
+		if (res.ok()) {
+			const Json items = Json::parse(res.body)["Items"];
+			for (size_t i = 0; i < items.size(); i++) {
+				Segment s;
+				s.type = items[i]["Type"].as_string("");
+				s.start = items[i]["StartTicks"].as_int(0) / 1e7;
+				s.end = items[i]["EndTicks"].as_int(0) / 1e7;
+				if (s.end > s.start && s.type != "Unknown") out.push_back(s);
+			}
+		}
+		platform::log("jellyfin: %d media segments (HTTP %d)", (int)out.size(), res.status);
+		done(out);
+	});
+}
+
 void Client::episodes(const std::string &series_id, ItemsCallback done) {
 	get_items("/Shows/" + series_id + "/Episodes?userId=" + user_id_ + "&" + LIST_FIELDS, done);
 }

@@ -16,7 +16,8 @@ public:
 	void draw(Renderer &r) override;
 
 private:
-	enum Section { RESUME, MOVIES, SHOWS, SIGN_OUT, SECTIONS };
+	enum Section { RESUME, NEXT_UP, MOVIES, SHOWS, SIGN_OUT, SECTIONS };
+	static const int LISTS = SIGN_OUT; // sections with an item grid
 	void load(int section);
 	void open(const jf::Item &item);
 
@@ -24,10 +25,10 @@ private:
 	Navigator &nav_;
 	int section_ = MOVIES;
 	bool in_grid_ = false;
-	std::vector<jf::Item> items_[3];
-	bool loaded_[3] = {}, loading_[3] = {};
-	std::string error_[3];
-	int selected_[3] = {};
+	std::vector<jf::Item> items_[LISTS];
+	bool loaded_[LISTS] = {}, loading_[LISTS] = {};
+	std::string error_[LISTS];
+	int selected_[LISTS] = {};
 	float scroll_ = 0;
 	float side_focus_[SECTIONS] = {};
 	std::vector<float> card_focus_;

@@ -39,6 +39,12 @@ private:
 	void apply_subtitle();
 	int ffmpeg_track(int jellyfin_index, bool audio) const;
 	void draw_subtitles(Renderer &r, float vx, float vy, float vw, float vh);
+	// Next episode / segments
+	const jf::Segment *current_segment() const;
+	void skip_segment(const jf::Segment &s);
+	void begin_countdown();
+	void play_next();
+	void draw_countdown(Renderer &r);
 
 	Fonts &fonts_;
 	Navigator &nav_;
@@ -67,4 +73,10 @@ private:
 	int ext_generation_ = 0;
 	bool ext_active_ = false, ext_loading_ = false;
 	TrackMenu menu_;
+	// Next episode, intro / credits skip
+	std::vector<jf::Segment> segments_;
+	jf::Item next_;
+	bool has_next_ = false;
+	double countdown_ = -1; // seconds left before the next episode (< 0: none)
+	float skip_focus_ = 0;
 };
