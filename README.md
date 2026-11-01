@@ -1,0 +1,74 @@
+# Jellyfin PS4
+
+A small native [Jellyfin](https://jellyfin.org) client for jailbroken PlayStation 4 consoles
+running [GoldHEN](https://github.com/GoldHEN/GoldHEN), built with the
+[OpenOrbis PS4 Toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain).
+
+This is an unofficial third-party client. It is not affiliated with the Jellyfin project or Sony.
+
+![Screenshot](docs/screenshot.png) <!-- placeholder: add a screenshot here -->
+
+## Features
+
+- **Sign-in**
+  - Server address entered with the PS4 system keyboard and checked before sign-in (shows the server's name and version).
+  - **Quick Connect** (approve a code from the Jellyfin web UI or app), or username and password.
+  - The server address and username are remembered. The password is never stored; only the access token the server issues is saved.
+  - If the server revokes the token, the app returns to sign-in with the server and username filled in.
+- **Library**: Continue Watching, Movies and TV Shows as poster grids, plus series episode lists.
+- **Playback**:
+  - Direct play of the original file. Video is decoded on the console by FFmpeg (H.264, HEVC incl. 10-bit, MPEG-4, VP9, AV1; MP4/MKV/TS; AAC, AC3, E-AC3, MP3, FLAC, Opus…), so the server doesn't need to transcode.
+  - Optional server transcode (H.264/AAC), used automatically if direct play fails.
+  - Resume, and playback progress reported to the server (Continue Watching).
+- **Controls**: D-pad move, × select, ○ back. Player: × pause, ◀ ▶ 10 s, L1 / R1 1 min, ○ stop.
+
+## Requirements
+
+- A PS4 or PS4 Pro with GoldHEN (Debug Settings enabled for the Package Installer).
+- A Jellyfin server (10.10+ API; tested with a 12.x server) reachable over HTTP on your LAN.
+  - **Quick Connect is recommended**: enable it in Dashboard → General → Quick Connect.
+  - Direct play needs no server CPU. Transcoding is only a fallback and needs a server that can transcode in real time.
+
+## Install
+
+1. Download (or build) `jellyfin-ps4-<version>.pkg`.
+2. Copy it to `/data/pkg/` on the console, e.g. with GoldHEN's FTP server (port 2121).
+3. On the PS4: Settings → Debug Settings → Game → Package Installer → select the pkg.
+   Newer versions install over older ones and keep your sign-in.
+4. Start **Jellyfin**, enter your server address (e.g. `http://192.168.1.10:8096`) and sign in.
+
+Files on the console: `/data/jellyfin/session.json` (server, username, access token, device id)
+and `/data/jellyfin/log.txt` (diagnostic log; no passwords or tokens).
+`tools/ps4_log.sh <ps4-ip>` prints the log over FTP.
+
+## Build
+
+Requirements: Docker (on Apple Silicon the amd64 image runs under emulation).
+
+    ./build.sh          # -> build_ps4/jellyfin-ps4-<version>.pkg
+
+- `tools/docker/Dockerfile`: Ubuntu 24.04, clang/lld 18, the OpenOrbis v0.5.4 release and libssl1.1 (for PkgTool.Core), all pinned by sha256.
+- The first build compiles FFmpeg 7.1 and HarfBuzz 14.6.0 from their official source tarballs (`tools/build_ffmpeg_ps4.sh`, `tools/build_harfbuzz_ps4.sh`) into `ffmpeg_ps4/` and `harfbuzz_ps4/`.
+- `tools/make_icon.py` renders `sce_sys/icon0.png`.
+- Title ID `JFIN00001`, content ID `IV0000-JFIN00001_00-JELLYFINPS4CLNT0` (see `Makefile.ps4`).
+
+## Credits and licences
+
+Jellyfin PS4 is free software under the **GNU GPL v3** (see `LICENSE`).
+
+The platform layer (Piglet with Sony's precompiled shaders, DualShock 4 input), renderer, FreeType text,
+libSceHttp networking, the HTTP range reader, JSON, the FFmpeg player and the FFmpeg/HarfBuzz build
+scripts are adapted from **[Stremio PS4](https://github.com/Navinas3460/Stremio-PS4)** (GPL-3.0).
+The system keyboard set-up follows **[Apollo Save Tool](https://github.com/bucanero/apollo-ps4)** (GPL-3.0).
+
+| Component | Use | Licence |
+|---|---|---|
+| [Stremio PS4](https://github.com/Navinas3460/Stremio-PS4) | adapted source (see above) | GPL-3.0 |
+| [OpenOrbis PS4 Toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain) | headers, library stubs, crt, `create-fself`, `PkgTool.Core`; `libc.prx`, `libSceFios2.prx`, `right.sprx` are packaged from it | GPL-3.0 (toolchain); see the toolchain for its bundled components |
+| [FFmpeg](https://ffmpeg.org) 7.1 | video/audio decoding, statically linked (built without `--enable-gpl` / `--enable-nonfree`) | LGPL-2.1-or-later |
+| [HarfBuzz](https://github.com/harfbuzz/harfbuzz) 14.6.0 | text shaping | MIT ("Old MIT") |
+| [stb_image](https://github.com/nothings/stb) | poster decoding | MIT / public domain |
+| [Inter](https://rsms.me/inter/) | UI font (`assets/fonts`) | SIL OFL 1.1 |
+| FreeType, libSceHttp, Piglet, sceImeDialog… | Sony system libraries loaded from the console at run time (not distributed) | — |
+
+"Jellyfin" is the name of the Jellyfin project; this client only talks to Jellyfin servers.

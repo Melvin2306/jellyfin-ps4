@@ -1,0 +1,18 @@
+# Build outputs
+build_ps4/
+*.pkg
+*.elf
+*.oelf
+*.o
+# Third-party builds (rebuilt by tools/build_*_ps4.sh)
+ffmpeg_ps4/
+harfbuzz_ps4/
+# Local / personal files
+session.json
+settings.json
+*.log
+log.txt
+.env
+.DS_Store
+.vscode/
+.idea/
